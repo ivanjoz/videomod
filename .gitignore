@@ -1,0 +1,7 @@
+cloud/main-compiled
+cloud/main-compiled-amd
+cloud/main-compiled-amd.zip
+cloud/main-compiled.zip
+cloud/cloudformation.yml
+credentials.json
+backend/app
