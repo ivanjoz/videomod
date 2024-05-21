@@ -3,6 +3,8 @@ package main
 import (
 	"app/core"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -15,8 +17,12 @@ import (
 	"github.com/rs/cors"
 )
 
-func LambdaHandler(_ context.Context, request *events.APIGatewayV2HTTPRequest) (*events.APIGatewayV2HTTPResponse, error) {
+func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*events.APIGatewayV2HTTPResponse, error) {
 	clearEnvVariables()
+
+	requestJson, _ := json.Marshal(*request)
+	fmt.Println("Request: ")
+	fmt.Println(requestJson)
 
 	core.Env.REQ_IP = request.RequestContext.HTTP.SourceIP
 	if len(request.Body) > 0 {

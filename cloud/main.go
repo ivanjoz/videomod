@@ -10,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	lambdaTypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -42,7 +43,7 @@ func main() {
 	}
 
 	if len(w1) == 0 {
-		fmt.Println("Selecciona acción: [1] Publish Code [2] Deploy Infra")
+		fmt.Println("Selecciona acción: [1] Publish Code [2] Update Enviroment Variables [3] Deploy Infra")
 
 		_, err := fmt.Scanln(&w1)
 		if err != nil {
@@ -80,9 +81,9 @@ func main() {
 		CompileBackendToS3(params, true)
 		DeployLambda(params)
 	} else if w1 == "2" {
+		UpdateEnviromentVariables(params)
+	} else if w1 == "3" {
 		DeployIfraestructure(params)
-	} else {
-		fmt.Println("No se reconoció la opción seleccionada.")
 	}
 
 	fmt.Println("Presione cualquier tecla para cerrar.")
@@ -210,7 +211,6 @@ func DeployIfraestructure(params DeployParams) {
 	CompileBackendToS3(params, true)
 
 	if stackStatus == 0 {
-
 		createStackInput := cloudformation.CreateStackInput{
 			StackName:    &params.STACK_NAME,
 			OnFailure:    "DELETE",
@@ -240,4 +240,46 @@ func DeployIfraestructure(params DeployParams) {
 
 		stackEventsLogger.GetCurrentEventsAll()
 	}
+}
+
+// Actualiza las variables de entorno de la Lambda
+func UpdateEnviromentVariables(params DeployParams) {
+
+	lambdaName := params.STACK_NAME + "-backend"
+	fmt.Println("Actulizando variables de entorno...")
+	enviromentVars := map[string]any{}
+
+	jsonFileBytes, err := ReadFile(GetBaseWD() + "/credentials.json")
+	if err != nil {
+		panic("No se pudo leer el archivo credentials.json: " + err.Error())
+	}
+
+	if err = json.Unmarshal(jsonFileBytes, &enviromentVars); err != nil {
+		panic("EL archivo credentials.json posee un formato erróneo: " + err.Error())
+	}
+
+	fmt.Println("Leyendo y comprimiendo credentials.json...")
+	jsonString := string(jsonFileBytes)
+	jsonBase64 := BytesToBase64(CompressZstd(&jsonString), true)
+
+	variables := map[string]string{
+		"APP_CODE": "gerp_prd", "CONFIG": jsonBase64,
+	}
+
+	configInput := lambda.UpdateFunctionConfigurationInput{
+		FunctionName: &lambdaName,
+		Environment:  &lambdaTypes.Environment{Variables: variables},
+	}
+
+	awsConfig, _ := MakeAwsConfig(params.AWS_PROFILE, params.AWS_REGION)
+	client := lambda.NewFromConfig(awsConfig)
+
+	fmt.Println("Enviando actualización a AWS Lambda...")
+	_, err = client.UpdateFunctionConfiguration(context.TODO(), &configInput)
+	if err != nil {
+		fmt.Println("Error al actualizar los parámetros de la Lambda. ", err)
+		return
+	}
+
+	fmt.Println("Variables actualizadas!")
 }

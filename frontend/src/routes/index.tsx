@@ -17,7 +17,9 @@ export default function Home() {
   if(typeof window === 'undefined'){ return <div>!</div> }
   let channel: RTCDataChannel
 
-  const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+  const connection = new RTCPeerConnection({ 
+    iceServers: [/*{ urls: 'stun:stun.l.google.com:19302' }*/] 
+  })
 
   connection.onconnectionstatechange = (event) => {
     console.log("connectionstatechange", event)
@@ -43,23 +45,57 @@ export default function Home() {
     console.log('onnegotiationneeded', ev)
   }
 
+  const acceptRemoteAnswer = async () => {
+    if(!remoteAnswer){ return }
+    try {
+      await connection.setRemoteDescription(JSON.parse(remoteAnswer)) 
+      localStorage.setItem("savedRemoteAnswer", remoteAnswer)
+    } catch (error) {
+      console.error(error)
+      console.error('Remote Answer no pudo ser parseada', remoteAnswer)
+    }
+  }
+
   async function createOffer() {
+    const nowTime = Math.floor(Date.now()/1000)
+    const savedLocalOffer = localStorage.getItem("savedLocalOffer") || ""
+    const lastSessionEnds = parseInt(localStorage.getItem("lastSessionEnds") || "0")
+
     channel = connection.createDataChannel('data')
     channel.onopen = event => console.log('onopen', event)
     channel.onmessage = onmessage
+    
+    let isSavedOffer = false
+    if(savedLocalOffer && (nowTime - lastSessionEnds < 600)){
+      const offer = JSON.parse(savedLocalOffer)
+      try {
+        await connection.setLocalDescription(new RTCSessionDescription(offer))
+        isSavedOffer = true
+      } catch (error) {
+        console.log('Error setting saved offer', error)
+        console.log('Invalid Offer::', savedLocalOffer)
+      }
+    }
+    if(!isSavedOffer){
+      const offer = await connection.createOffer()
+      console.log("Local offer created:",JSON.stringify(offer))
+      connection.setLocalDescription(offer).then(() => offer).then(offer2 => {
+        localStorage.setItem("savedLocalOffer", JSON.stringify(offer2))
+      })
+    }
 
     connection.onicecandidate = (event) => {
       console.log('localDescription Offer 1::', JSON.stringify(connection.localDescription))
       if(connection.localDescription.type == 'offer'){
         setLocalDescription(JSON.stringify(connection.localDescription))
+        setInterval(() => {
+          localStorage.setItem("lastSessionEnds",String(Math.floor(Date.now()/1000)))
+        },1000)
       }
       if (!event.candidate) {
         console.log('localDescription Offer 2::', JSON.stringify(connection.localDescription))
       }
     }
-
-    const offer = await connection.createOffer()
-    await connection.setLocalDescription(offer)
   }
 
   createOffer()
@@ -85,16 +121,6 @@ export default function Home() {
     } catch (error) {
       console.error(error)
       console.error('Remote Offer no pudo ser parseada', remoteOffer)
-    }
-  }
-
-  const acceptRemoteAnswer = async () => {
-    if(!remoteAnswer){ return }
-    try {
-      await connection.setRemoteDescription(JSON.parse(remoteAnswer)) 
-    } catch (error) {
-      console.error(error)
-      console.error('Remote Answer no pudo ser parseada', remoteAnswer)
     }
   }
 
