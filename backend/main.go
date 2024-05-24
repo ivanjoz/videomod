@@ -17,12 +17,12 @@ import (
 	"github.com/rs/cors"
 )
 
-func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*events.APIGatewayV2HTTPResponse, error) {
+func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*events.APIGatewayProxyResponse, error) {
 	clearEnvVariables()
 
 	requestJson, _ := json.Marshal(*request)
 	fmt.Println("Request: ")
-	fmt.Println(requestJson)
+	fmt.Println(string(requestJson))
 
 	core.Env.REQ_IP = request.RequestContext.HTTP.SourceIP
 	if len(request.Body) > 0 {
@@ -45,8 +45,24 @@ func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*e
 		Route:   route,
 		Method:  request.RequestContext.HTTP.Method,
 	}
-	response := mainHandler(args)
-	return response.LambdaResponse, nil
+
+	wssEvents := []string{"CONNECT", "DISCONNECT", "MESSAGE"}
+	fmt.Println("Event type: ", request.RequestContext.EventType)
+	response := core.MainResponse{}
+	if core.Contains(wssEvents, request.RequestContext.EventType) {
+		response = wssHandler(args)
+	} else {
+		response = mainHandler(args)
+	}
+
+	core.Log("Retornano StatusCode: ", response.LambdaResponse.StatusCode, "|", response.LambdaResponse.IsBase64Encoded, "|", response.LambdaResponse.Body)
+
+	return &events.APIGatewayProxyResponse{
+		StatusCode:      response.LambdaResponse.StatusCode,
+		Body:            response.LambdaResponse.Body,
+		Headers:         response.LambdaResponse.Headers,
+		IsBase64Encoded: response.LambdaResponse.IsBase64Encoded,
+	}, nil
 }
 
 func LocalHandler(w http.ResponseWriter, request *http.Request) {

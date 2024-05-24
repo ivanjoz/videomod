@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-lambda-go/events"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -193,4 +194,16 @@ func prepareResponse(args core.HandlerArgs, handlerResponse *core.HandlerRespons
 		}
 	}
 	return response
+}
+
+// Handler principal (para lambda y para local)
+func wssHandler(args core.HandlerArgs) core.MainResponse {
+
+	fmt.Println("Respondiendo status 200 Connected")
+	return core.MainResponse{
+		LambdaResponse: &events.APIGatewayV2HTTPResponse{
+			StatusCode: 200,
+			Body:       "Connected",
+		},
+	}
 }

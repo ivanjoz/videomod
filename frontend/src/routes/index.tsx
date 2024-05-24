@@ -1,5 +1,5 @@
 "use client";
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createEffect, createSignal } from "solid-js";
 import "video.js/dist/video-js.min.css";
 
 export default function Home() {
@@ -123,6 +123,31 @@ export default function Home() {
       console.error('Remote Offer no pudo ser parseada', remoteOffer)
     }
   }
+
+  createEffect(() => {
+    const ws = new WebSocket('https://pv5s7gfoge.execute-api.us-east-1.amazonaws.com/p/');
+
+    ws.onopen = () => {
+      console.log('WebSocket is connected');
+      ws.send('Hello Server!');
+    };
+
+    ws.onmessage = (event) => {
+      console.log(`Received: ${event.data}`);
+    };
+
+    ws.onerror = (error) => {
+      console.log(`WebSocket error: ${error}`);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
+    return () => {
+      ws.close();
+    };
+  })
 
   return <div>
     <h3>WebRTC Demo!</h3>
