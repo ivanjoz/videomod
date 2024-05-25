@@ -167,6 +167,10 @@ type IUsuario struct {
 var Usuario IUsuario
 
 func CheckUser(req *HandlerArgs, access int) IUsuario {
+	if req.IsWebSocket {
+		return Usuario
+	}
+
 	userToken := req.Headers["authorization"]
 	if len(userToken) < 8 {
 		userToken = req.Headers["Authorization"]

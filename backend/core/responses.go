@@ -30,12 +30,15 @@ type HandlerArgs struct {
 	QueryString    string
 	Method         string
 	Route          string
+	ClientID       string
 	Authorization  string
 	MergedID       int32
 	ResponseBody   *string
 	ResponseError  string
 	ReqParams      string
 	Usuario        IUsuario
+	EventType      string
+	IsWebSocket    bool
 }
 
 func PrintMemUsage() {
@@ -804,6 +807,9 @@ func (req *HandlerArgs) MakeResponsePlain(body *string) HandlerResponse {
 }
 
 func SendLocalResponse(args HandlerArgs, response HandlerResponse) {
+	if args.IsWebSocket {
+		return
+	}
 	respWriter := *args.ResponseWriter
 	respWriter.Header().Set("Access-Control-Allow-Origin", "*")
 

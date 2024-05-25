@@ -126,27 +126,88 @@ export class WebRTCManager {
 
 export const webRTCManager = new WebRTCManager()
 
+export class ConnectionManager {
+
+  clientID: string
+  offerString: string
+  onOpenPromise: Promise<any>
+  ws: WebSocket
+
+  constructor(){
+    this.ws = new WebSocket('ws://127.0.0.1:3589/ws')
+    
+    this.onOpenPromise = Promise.all([
+      new Promise<void>((resolve) => {
+        this.ws.onopen = async () => {
+          console.log('WebSocket is connected')
+          resolve()
+        }
+      }),
+      new Promise<void>((resolve) => {
+        getClientID().then(id => {
+          this.clientID = id
+          console.log('Client-ID obtenido::', this.clientID)
+          resolve()
+        })
+      }),
+    ]).then(() => {
+      delete this.onOpenPromise
+    })
+
+    this.ws.onmessage = (event) => {
+      console.log(`Received: ${event.data}`)
+    }
+  
+    this.ws.onerror = (error) => {
+      console.log(error)
+      console.log(`WebSocket error: ${error}`)
+    }
+  
+    this.ws.onclose = () => {
+      console.log('WebSocket connection closed')
+    }
+  }
+
+  async sendMessage(accion: string, messageBody: string){
+    if(this.onOpenPromise){ await this.onOpenPromise }
+    console.log('Client-ID a enviar::', this.clientID)
+    const message = { a: accion, b: messageBody, c: this.clientID }
+    const array8int = await compressStringWithGzip(JSON.stringify(message))
+    this.ws.send(array8int)
+  }
+
+  async sendOffer(){
+    const offerString = await webRTCManager.getOffer()
+    await this.sendMessage("PostRtcOffer",offerString)
+  }
+}
+
 export const Connect = async ()=> {
-  const clientID = await getClientID()
-  console.log("offer string::", webRTCManager.getOffer())
+  const connectionManager = new ConnectionManager()
+  await connectionManager.sendMessage("SendHello","Hello Server")
+  await connectionManager.sendOffer()
+}
 
-  console.log("client id obtenido::", clientID)
-  const ws = new WebSocket('wss://pv5s7gfoge.execute-api.us-east-1.amazonaws.com/p/')
+export const compressStringWithGzip =  async (inputString: string): Promise<Uint8Array> => {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(inputString)
 
-  ws.onopen = () => {
-    console.log('WebSocket is connected')
-    ws.send('Hello Server!')
+  const compressionStream = new window.CompressionStream('gzip')
+  const writer = compressionStream.writable.getWriter()
+
+  writer.write(data)
+  writer.close()
+
+  const reader = compressionStream.readable.getReader()
+  const chunks = []
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    chunks.push(value)
   }
 
-  ws.onmessage = (event) => {
-    console.log(`Received: ${event.data}`)
-  }
-
-  ws.onerror = (error) => {
-    console.log(`WebSocket error: ${error}`)
-  }
-
-  ws.onclose = () => {
-    console.log('WebSocket connection closed')
-  }
+  const compressedData = new Blob(chunks, { type: 'application/gzip' })
+  const compressedArray = await compressedData.arrayBuffer()
+  return  new Uint8Array(compressedArray)
 }

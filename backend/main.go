@@ -12,8 +12,11 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"unicode/utf8"
+
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/gorilla/websocket"
 	"github.com/rs/cors"
 )
 
@@ -39,18 +42,22 @@ func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*e
 	}
 
 	args := core.HandlerArgs{
-		Body:    &request.Body,
-		Query:   request.QueryStringParameters,
-		Headers: request.Headers,
-		Route:   route,
-		Method:  request.RequestContext.HTTP.Method,
+		Body:      &request.Body,
+		Query:     request.QueryStringParameters,
+		Headers:   request.Headers,
+		Route:     route,
+		Method:    request.RequestContext.HTTP.Method,
+		EventType: request.RequestContext.EventType,
 	}
 
 	wssEvents := []string{"CONNECT", "DISCONNECT", "MESSAGE"}
-	fmt.Println("Event type: ", request.RequestContext.EventType)
+	fmt.Println("Event type: ", args.EventType)
 	response := core.MainResponse{}
-	if core.Contains(wssEvents, request.RequestContext.EventType) {
-		response = wssHandler(args)
+	if core.Contains(wssEvents, args.EventType) {
+		if args.EventType == "MESSAGE" {
+			args.Body = &request.Body
+		}
+		response = WssHandler(args)
 	} else {
 		response = mainHandler(args)
 	}
@@ -66,7 +73,6 @@ func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*e
 }
 
 func LocalHandler(w http.ResponseWriter, request *http.Request) {
-	core.Log("hola aquí!!")
 	clearEnvVariables()
 	core.Env.REQ_IP = request.RemoteAddr
 
@@ -78,13 +84,6 @@ func LocalHandler(w http.ResponseWriter, request *http.Request) {
 		Method:         strings.ToUpper(request.Method),
 		Route:          request.URL.Path,
 		ResponseWriter: &w,
-	}
-
-	blen := core.If(len(body) > 500, 500, len(body))
-	if blen > 0 {
-		core.Log("*body enviado (LOCAL): ", body[0:(blen-1)])
-	} else {
-		core.Log("no se encontró body")
 	}
 
 	// Convierte los query params en un map[string]: stirng
@@ -105,6 +104,68 @@ func LocalHandler(w http.ResponseWriter, request *http.Request) {
 	}
 
 	mainHandler(args)
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+func LocalWssHandler(w http.ResponseWriter, r *http.Request) {
+	// Upgrade initial GET request to a websocket
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Make sure we close the connection when the function returns
+	defer ws.Close()
+	core.Log("Client connected")
+
+	for {
+		// Read in a new message as JSON and map it to a Message object
+		_, message, err := ws.ReadMessage()
+		if err != nil {
+			log.Printf("error: %v", err)
+			break
+		}
+		// Print the message to the console
+		core.Log("Is UTF-8:", utf8.Valid(message))
+		if !utf8.Valid(message) {
+			message = core.DecompressGzipBytes(&message)
+		}
+		core.Log("Recibido: ", string(message))
+		args := ParseWssMessage(message)
+		args.IsWebSocket = true
+		mainHandler(args)
+	}
+}
+
+func ParseWssMessage(messageRaw []byte) core.HandlerArgs {
+	message := core.WsMessage{}
+	err := json.Unmarshal(messageRaw, &message)
+	if err != nil {
+		core.Log("Error al interpretar el mensaje:", err)
+	}
+	return core.HandlerArgs{
+		Body:     &message.Body,
+		Route:    message.Accion,
+		ClientID: message.ClientID,
+	}
+}
+
+// Handler principal (para lambda y para local)
+func WssHandler(args core.HandlerArgs) core.MainResponse {
+
+	fmt.Println("Respondiendo status 200 Connected")
+	return core.MainResponse{
+		LambdaResponse: &events.APIGatewayV2HTTPResponse{
+			StatusCode: 200,
+			Body:       "Connected",
+		},
+	}
 }
 
 func OnPanic(panicMessage interface{}) {
@@ -130,19 +191,27 @@ func main() {
 		}
 	}
 
-	// Si se está desarrollando en local
+	// For local development
 	if core.Env.IS_LOCAL {
-		core.Log("Ejecutando en local. http://localhost" + serverPort)
-
 		cors := cors.New(cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowedMethods:   []string{http.MethodPost, http.MethodPut, http.MethodGet},
 			AllowedHeaders:   []string{"*"},
 			AllowCredentials: false,
 		})
-		// Inicia el servidor con la configuración CORS
-		http.ListenAndServe(serverPort, cors.Handler(http.HandlerFunc(LocalHandler)))
 
+		mux := http.NewServeMux()
+		// HTTP server
+		core.Log("Ejecutando HTTP server: localhost" + serverPort)
+		mux.Handle("/", cors.Handler(http.HandlerFunc(LocalHandler)))
+		// WebSocket server
+		mux.HandleFunc("/ws", LocalWssHandler)
+
+		// Start the server with the ServeMux
+		err := http.ListenAndServe(serverPort, mux)
+		if err != nil {
+			log.Fatal("Server start error: ", err)
+		}
 	} else {
 		// Si se está en Lamnda
 		logger := log.New(os.Stdout, "", log.LstdFlags|log.Llongfile)

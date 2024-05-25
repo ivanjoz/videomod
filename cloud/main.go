@@ -202,6 +202,7 @@ func DeployIfraestructure(params DeployParams) {
 		"$LAMBDA_NAME":       params.STACK_NAME + "-backend",
 		"$LAMBDA_IAM_ROLE":   params.LAMBDA_IAM_ROLE,
 		"$S3_COMPILED_PATH":  S3_COMPILED_PATH,
+		"$DYNAMODB_TABLE":    params.STACK_NAME + "-db",
 	}
 
 	for key, value := range variables {

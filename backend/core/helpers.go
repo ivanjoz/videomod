@@ -10,7 +10,6 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,10 +32,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/kr/pretty"
 	"github.com/martinlindhe/base36"
-	"github.com/mashingan/smapping"
 	"github.com/mitchellh/hashstructure/v2"
-	"github.com/rodaine/table"
-	"github.com/vmihailenco/msgpack/v5"
 	"golang.org/x/exp/constraints"
 )
 
@@ -424,31 +420,6 @@ func PtrString(v string) *string {
 	return &v
 }
 
-func MsgPEncode(msg any) ([]byte, error) {
-	var buffer bytes.Buffer
-	msgEncoder := msgpack.NewEncoder(&buffer)
-	msgEncoder.SetCustomStructTag("ms")
-	msgEncoder.SetOmitEmpty(true)
-	msgEncoder.UseCompactInts(true)
-	msgEncoder.UseCompactFloats(true)
-	err := msgEncoder.Encode(msg)
-
-	return buffer.Bytes(), err
-}
-
-func MsgPDecode(msgBytes []byte, msg any) error {
-	buffer := bytes.NewBuffer(msgBytes)
-	msgDecoder := msgpack.NewDecoder(buffer)
-	msgDecoder.SetCustomStructTag("ms")
-
-	err := msgDecoder.Decode(msg)
-	if err != nil {
-		Log("Error decoding MsgPack: ", err)
-		return err
-	}
-	return nil
-}
-
 func Err(content ...any) error {
 	errMessage := Concatx(" ", content)
 	Log(errMessage)
@@ -713,7 +684,7 @@ func DecompressBrotli(content *[]byte) string {
 	return string(contentUncompressed)
 }
 
-func DecompressGzip(content *[]byte) string {
+func DecompressGzipBytes(content *[]byte) []byte {
 	// Create a reader from the compressed data
 	reader := bytes.NewReader(*content)
 
@@ -721,7 +692,7 @@ func DecompressGzip(content *[]byte) string {
 	gzipReader, err := gzip.NewReader(reader)
 	if err != nil {
 		fmt.Println("Error al crear reader: " + err.Error())
-		return ""
+		return []byte{}
 	}
 	defer gzipReader.Close()
 
@@ -729,10 +700,14 @@ func DecompressGzip(content *[]byte) string {
 	decompressedData, err := io.ReadAll(gzipReader)
 	if err != nil {
 		fmt.Println("Error al descomprimir: " + err.Error())
-		return ""
+		return []byte{}
 	}
 
-	return string(decompressedData)
+	return decompressedData
+}
+
+func DecompressGzip(content *[]byte) string {
+	return string(DecompressGzipBytes(content))
 }
 
 func DecompressBrotli64(content *string) string {
@@ -1187,62 +1162,6 @@ func IF(ok bool, exec func()) {
 	}
 }
 
-func PrintTable[T any](records []T, maxLenSlice, maxLenContent int, columns ...string) {
-	if maxLenSlice > 0 && len(records) > maxLenSlice {
-		records = records[0:maxLenSlice]
-	}
-
-	// Log("registros mapeados:: ", len(records))
-	// Print(records)
-	recordsMapped := []map[string]any{}
-	avoidKeys := map[string]bool{}
-	includedColumns := map[string]bool{}
-	for _, e := range columns {
-		includedColumns[e] = true
-	}
-
-	for _, e := range records {
-		rec := smapping.MapFields(e)
-		for key, value := range rec {
-			if _, ok := avoidKeys[key]; ok {
-				delete(rec, key)
-				continue
-			}
-			if len(columns) > 0 {
-				if _, ok := includedColumns[key]; !ok {
-					delete(rec, key)
-					continue
-				}
-			}
-			valueString := fmt.Sprintf("%v", value)
-			if maxLenContent > 0 && len(valueString) > maxLenContent {
-				valueString = valueString[0:maxLenContent]
-				rec[key] = valueString
-			}
-			includedColumns[key] = true
-		}
-		recordsMapped = append(recordsMapped, rec)
-	}
-
-	columnsAll := []any{}
-	columnsAllString := []string{}
-	for e := range includedColumns {
-		columnsAll = append(columnsAll, e)
-		columnsAllString = append(columnsAllString, e)
-	}
-
-	newTable := table.New(columnsAll...)
-	for _, e := range recordsMapped {
-		row := []any{}
-		for _, col := range columnsAllString {
-			row = append(row, e[col])
-		}
-		// Log("agregando: ", row)
-		newTable.AddRow(row...)
-	}
-	newTable.Print()
-}
-
 func GetHoursMinutes() string {
 	currentTime := time.Now()
 	for i := -1; i < 2; i++ {
@@ -1366,18 +1285,6 @@ func MakeRandomBase36String(length int) string {
 		bytes[i] = base36Chars[mrand.Intn(ln)]
 	}
 	return string(bytes)
-}
-
-func GobEncode(records any) ([]byte, error) {
-	var buffer bytes.Buffer
-	encoder := gob.NewEncoder(&buffer)
-
-	err := encoder.Encode(records)
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return buffer.Bytes(), nil
 }
 
 func Concat62(values ...any) string {

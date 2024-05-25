@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-lambda-go/events"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -37,10 +36,8 @@ func makeAppHandlers() *core.AppRouterType {
 func mainHandler(args core.HandlerArgs) core.MainResponse {
 	// coloca algunas variables de entorno que pueden ser utilizadas por otros handlers
 	args.Authorization = core.MapGetKeys(args.Headers, "Authorization", "authorization")
-	req_encoding := core.MapGetKeys(args.Headers, "Accept-Encoding", "accept-encoding")
 	core.StartTime = (time.Now()).UnixMilli()
-
-	core.Env.REQ_ENCODING = req_encoding
+	core.Env.REQ_ENCODING = core.MapGetKeys(args.Headers, "Accept-Encoding", "accept-encoding")
 	core.Env.REQ_PARAMS = core.MapGetKeys(args.Headers, "x-api-key", "X-Api-Key")
 	core.Env.REQ_USER_AGENT = core.MapGetKeys(args.Headers, "User-Agent", "user-agent")
 	core.Env.REQ_ID = core.IntToBase64(time.Now().UnixMilli(), 6)
@@ -62,7 +59,11 @@ func mainHandler(args core.HandlerArgs) core.MainResponse {
 	}
 
 	path := strings.Join(pathSegments, "/")
-	funcPath := args.Method + "." + path
+	funcPath := path
+	if len(args.Method) > 0 {
+		funcPath = args.Method + "." + path
+	}
+
 	core.Env.HANDLER_PARH = funcPath
 
 	mergedRoutes := []core.MergedRoute{}
@@ -151,6 +152,8 @@ func mainHandler(args core.HandlerArgs) core.MainResponse {
 		// revisa si hay una función que satisfaga la lambda requerida
 	} else if len(handlerResponse.Error) == 0 {
 		core.Env.REQ_PATH = funcPath
+		core.Log("Buscando path solicitado::", funcPath)
+
 		handlerFunc, ok := appHandlers[funcPath]
 		if !ok {
 			core.Log("no hay una lambda para el path solicitado::", funcPath)
@@ -194,16 +197,4 @@ func prepareResponse(args core.HandlerArgs, handlerResponse *core.HandlerRespons
 		}
 	}
 	return response
-}
-
-// Handler principal (para lambda y para local)
-func wssHandler(args core.HandlerArgs) core.MainResponse {
-
-	fmt.Println("Respondiendo status 200 Connected")
-	return core.MainResponse{
-		LambdaResponse: &events.APIGatewayV2HTTPResponse{
-			StatusCode: 200,
-			Body:       "Connected",
-		},
-	}
 }

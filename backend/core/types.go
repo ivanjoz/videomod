@@ -107,6 +107,12 @@ type FuncResponse struct {
 	ContentJson string `json:",omitempty"`
 }
 
+type WsMessage struct {
+	Accion   string `json:"a"`
+	Body     string `json:"b"`
+	ClientID string `json:"c"`
+}
+
 type AppRouterType map[string]func(args *HandlerArgs) HandlerResponse
 
 type Int int
