@@ -30,7 +30,8 @@ type HandlerArgs struct {
 	QueryString    string
 	Method         string
 	Route          string
-	ClientID       string
+	ClientID       string // websocket
+	ConnectionID   string // websocket
 	Authorization  string
 	MergedID       int32
 	ResponseBody   *string
