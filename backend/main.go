@@ -139,6 +139,7 @@ func LocalWssHandler(w http.ResponseWriter, r *http.Request) {
 		core.Log("Recibido: ", string(message))
 		args := ParseWssMessage(message)
 		args.IsWebSocket = true
+		args.WebSocketConn = ws
 		mainHandler(args)
 	}
 }

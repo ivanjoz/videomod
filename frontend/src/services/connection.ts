@@ -178,7 +178,8 @@ export class ConnectionManager {
 
   async sendOffer(){
     const offerString = await webRTCManager.getOffer()
-    await this.sendMessage("PostRtcOffer",offerString)
+    const message = { offer: offerString }
+    await this.sendMessage("PostRtcOffer", JSON.stringify(message))
   }
 }
 

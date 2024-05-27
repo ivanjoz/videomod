@@ -19,6 +19,7 @@ import (
 	"github.com/DmitriyVTitov/size"
 	"github.com/andybalholm/brotli"
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/gorilla/websocket"
 )
 
 type HandlerArgs struct {
@@ -30,8 +31,6 @@ type HandlerArgs struct {
 	QueryString    string
 	Method         string
 	Route          string
-	ClientID       string // websocket
-	ConnectionID   string // websocket
 	Authorization  string
 	MergedID       int32
 	ResponseBody   *string
@@ -39,7 +38,11 @@ type HandlerArgs struct {
 	ReqParams      string
 	Usuario        IUsuario
 	EventType      string
-	IsWebSocket    bool
+	// websocket
+	IsWebSocket   bool
+	ClientID      string
+	ConnectionID  string
+	WebSocketConn *websocket.Conn
 }
 
 func PrintMemUsage() {
@@ -580,6 +583,22 @@ func makeHeaders() map[string]string {
 
 // Crea una respuesta serializando un struct
 func (req *HandlerArgs) MakeResponse(respStruct any) HandlerResponse {
+	if req.IsWebSocket {
+		bodyBytes, err := json.Marshal(respStruct)
+		if err != nil {
+			return req.MakeErr("No se pudo serializar respuesta: " + err.Error())
+		}
+		var bodyCompressed bytes.Buffer
+		gz := gzip.NewWriter(&bodyCompressed)
+		defer gz.Close()
+		if _, err := gz.Write(bodyBytes); err != nil {
+			log.Fatal(err)
+		}
+		if req.WebSocketConn != nil {
+			req.WebSocketConn.WriteMessage(websocket.BinaryMessage, bodyCompressed.Bytes())
+		}
+		return HandlerResponse{}
+	}
 	return MakeResponse(req, &respStruct)
 }
 
@@ -608,7 +627,6 @@ func MakeResponse[T any](req *HandlerArgs, respStruct *T) HandlerResponse {
 		fileName := fmt.Sprintf("output-%v", req.MergedID)
 		response.BodyOnDisk = EncodeJsonToFileX(respStruct, fileName)
 	}
-
 	return response
 }
 

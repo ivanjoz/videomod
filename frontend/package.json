@@ -2,9 +2,9 @@
   "name": "example-basic",
   "type": "module",
   "scripts": {
-    "dev": "vinxi dev",
+    "dev": "vinxi dev --port 3588",
     "build": "vinxi build && node build.js",
-    "start": "vinxi start",
+    "start": "vinxi start --port 3588",
     "version": "vinxi version"
   },
   "dependencies": {

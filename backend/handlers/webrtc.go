@@ -32,7 +32,7 @@ func MakeClientTable() aws.DynamoTableRecords[RtcClientOffer] {
 }
 
 func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
-
+	core.Log("Body recibido::", *args.Body)
 	offer := RtcClientOffer{}
 	err := json.Unmarshal([]byte(*args.Body), &offer)
 	if err != nil {
@@ -40,10 +40,27 @@ func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
 		return core.HandlerResponse{}
 	}
 
+	if offer.Offer == "" {
+		core.Log("No se recibió el SPD Offer")
+		return core.HandlerResponse{}
+	}
+
 	offer.ClientID = args.ClientID
+
+	core.Print(offer)
 
 	dynamoTable := MakeClientTable()
 	dynamoTable.PutItem(&offer, 1)
 
-	return core.HandlerResponse{}
+	// Devuelve los ultimos usuarios conectados
+	query := aws.DynamoQueryParam{Index: "sk", GreaterThan: "0", ScanIndexForward: true, Limit: 50}
+	records, err := dynamoTable.QueryBatch([]aws.DynamoQueryParam{query})
+	if err != nil {
+		core.Log("Error al obtener las últimas conexiones:", err)
+		return core.HandlerResponse{}
+	}
+
+	core.Log("Número de conexiones obtenidas::", len(records))
+
+	return args.MakeResponse(records)
 }
