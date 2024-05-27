@@ -590,12 +590,16 @@ func (req *HandlerArgs) MakeResponse(respStruct any) HandlerResponse {
 		}
 		var bodyCompressed bytes.Buffer
 		gz := gzip.NewWriter(&bodyCompressed)
-		defer gz.Close()
 		if _, err := gz.Write(bodyBytes); err != nil {
 			log.Fatal(err)
 		}
+		if err := gz.Close(); err != nil {
+			log.Fatal(err)
+		}
+		bodyBytesCompressed := bodyCompressed.Bytes()
+		Log("Body bytes a enviar::", len(bodyBytesCompressed))
 		if req.WebSocketConn != nil {
-			req.WebSocketConn.WriteMessage(websocket.BinaryMessage, bodyCompressed.Bytes())
+			req.WebSocketConn.WriteMessage(websocket.BinaryMessage, bodyBytesCompressed)
 		}
 		return HandlerResponse{}
 	}

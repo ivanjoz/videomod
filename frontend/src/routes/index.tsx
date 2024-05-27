@@ -2,7 +2,7 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import Dexie from 'dexie'
 import "video.js/dist/video-js.min.css";
-import { Connect, connectionState, iceConnectionState, recivedMessages, webRTCManager } from "~/services/connection";
+import { Connect, connectionManager, connectionState, iceConnectionState, recivedMessages, webRTCManager } from "~/services/connection";
 
 export default function Home() {
 
@@ -55,8 +55,11 @@ export default function Home() {
   }
 
   createEffect(() => {
+    connectionManager.onMessage = e => {
+      console.log("respuesta recibida::", e)
+    }
     Connect()
-  })
+  },[])
 
   return <div>
     <h3>WebRTC Demo!</h3>

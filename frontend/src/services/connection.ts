@@ -132,6 +132,7 @@ export class ConnectionManager {
   offerString: string
   onOpenPromise: Promise<any>
   ws: WebSocket
+  onMessage: (e: string) => void
 
   constructor(){
     this.ws = new WebSocket('ws://127.0.0.1:3589/ws')
@@ -155,7 +156,19 @@ export class ConnectionManager {
     })
 
     this.ws.onmessage = (event) => {
-      console.log(`Received: ${event.data}`)
+      const blob = event.data
+      const ds = new DecompressionStream('gzip');
+      const decompressedStream = blob.stream().pipeThrough(ds);
+      new Response(decompressedStream).blob().then((blob) => {
+        return blob.text()
+      }).then((responseText) => {
+        try {
+          responseText = JSON.parse(responseText)
+        } catch (error) {
+          console.warn("La respuesta no es un JSON válido: ",responseText)
+        }
+        if(this.onMessage){ this.onMessage(responseText) }
+      })
     }
   
     this.ws.onerror = (error) => {
@@ -183,8 +196,9 @@ export class ConnectionManager {
   }
 }
 
+export const connectionManager = new ConnectionManager()
+
 export const Connect = async ()=> {
-  const connectionManager = new ConnectionManager()
   await connectionManager.sendMessage("SendHello","Hello Server")
   await connectionManager.sendOffer()
 }
