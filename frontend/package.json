@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "vinxi dev --port 3588",
-    "build": "vinxi build && node build.js",
+    "build": "vinxi build",
     "start": "vinxi start --port 3588",
     "version": "vinxi version"
   },

@@ -32,37 +32,37 @@ func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*e
 		core.Log("*body enviado: ", core.StrCut(request.Body, 400))
 	}
 
-	route := request.RequestContext.HTTP.Path
-	if len(route) == 0 {
-		route = request.RawPath
-	}
-	if len(route) == 0 {
-		core.Log("No custom path given, but AWS routed this request to this Lambda anyways.")
-		route = "MISSING"
-	}
-
 	args := core.HandlerArgs{
 		Body:         &request.Body,
 		Query:        request.QueryStringParameters,
 		Headers:      request.Headers,
-		Route:        route,
+		Route:        request.RequestContext.HTTP.Path,
 		Method:       request.RequestContext.HTTP.Method,
 		EventType:    request.RequestContext.EventType,
 		ConnectionID: request.RequestContext.ConnectionID,
+		IsWebSocket:  true,
 	}
 
 	wssEvents := []string{"CONNECT", "DISCONNECT", "MESSAGE"}
 	fmt.Println("Event type: ", args.EventType)
 	response := core.MainResponse{}
+	// Revisa si es websocket
 	if core.Contains(wssEvents, args.EventType) {
-		if args.EventType == "MESSAGE" {
-			args.Body = &request.Body
-		}
-		response = WssHandler(args)
+		awsArgs := ParseWssMessage([]byte(request.Body))
+		args.Body = awsArgs.Body
+		args.Route = awsArgs.Route
+		args.ClientID = awsArgs.ClientID
 	} else {
-		response = mainHandler(args)
+		if len(args.Route) == 0 {
+			args.Route = request.RawPath
+		}
+		if len(args.Route) == 0 {
+			core.Log("No path given, but AWS routed this request anyways.")
+			args.Route = "MISSING"
+		}
 	}
 
+	response = mainHandler(args)
 	core.Log("Retornano StatusCode: ", response.LambdaResponse.StatusCode, "|", response.LambdaResponse.IsBase64Encoded, "|", response.LambdaResponse.Body)
 
 	return &events.APIGatewayProxyResponse{
