@@ -52,6 +52,7 @@ type APIGatewayV2HTTPRequestContext struct {
 	TimeEpoch    int64                                         `json:"timeEpoch"`
 	HTTP         APIGatewayV2HTTPRequestContextHTTPDescription `json:"http"`
 	//Websocket
+	ConnectionID       string      `json:"connectionId"`
 	ResourceID         string      `json:"resourceId"`
 	Error              string      `json:"error"`
 	EventType          string      `json:"eventType"`

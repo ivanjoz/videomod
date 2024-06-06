@@ -4,6 +4,7 @@ import (
 	"app/aws"
 	"app/core"
 	"encoding/json"
+	"time"
 )
 
 type RtcClientOffer struct {
@@ -34,6 +35,8 @@ func MakeClientTable() aws.DynamoTableRecords[RtcClientOffer] {
 func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
 	core.Log("Body recibido::", *args.Body)
 	offer := RtcClientOffer{}
+	offer.Updated = core.ToBase36(time.Now().Unix() / 2)
+
 	err := json.Unmarshal([]byte(*args.Body), &offer)
 	if err != nil {
 		core.Log("Error al interpretar el mensaje:", err)

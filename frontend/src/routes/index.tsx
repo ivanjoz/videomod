@@ -1,120 +1,63 @@
 "use client";
 import { For, Show, createEffect, createSignal } from "solid-js";
-import Dexie from 'dexie'
 import "video.js/dist/video-js.min.css";
 import { Connect, connectionManager, connectionState, iceConnectionState, recivedMessages, webRTCManager } from "~/services/connection";
+import s1 from '../styles/components.module.css'
 
 export default function Home() {
 
   const [localDescription, setLocalDescription] = createSignal("")
   const [createdAnswer, setCreatedAnswer] = createSignal("----------")
-
-  let remoteOffer = ""
-  let remoteAnswer = ""
-  let messageTextArea: HTMLTextAreaElement
-
+  const [loadingClients, setLoadingClients] = createSignal(true)
+  const [clients, setClients] = createSignal([])
+  
   if(typeof window === 'undefined'){ return <div>!</div> }
 
-  webRTCManager.getOffer().then(offerString => {
-    setLocalDescription(offerString)
+  connectionManager.on('PostRtcOffer', users => {
+    for(let user of users){
+      user._updated = parseInt(user.updated,36) * 2
+    }
+    setClients(users)
+    console.log('Usuarios conectados::', users)
+    setLoadingClients(false)
   })
 
-  const acceptRemoteAnswer = async () => {
-    if(!remoteAnswer){ return }
-    try {
-      await webRTCManager.connection.setRemoteDescription(JSON.parse(remoteAnswer)) 
-      localStorage.setItem("savedRemoteAnswer", remoteAnswer)
-    } catch (error) {
-      console.error(error)
-      console.error('Remote Answer no pudo ser parseada', remoteAnswer)
-    }
-  }
-
-  const acceptRemoteOffer = async () => {
-    if(!remoteOffer){ return }
-    try {
-      const offer = JSON.parse(remoteOffer)
-      await webRTCManager.connection.setRemoteDescription(offer)
-
-      webRTCManager.connection.onicecandidate = (event) => {
-        if(webRTCManager.connection.localDescription.type == 'answer'){
-          setCreatedAnswer(JSON.stringify(webRTCManager.connection.localDescription))
-        }
-        console.log('localDescription Answer 1::', webRTCManager.connection.localDescription)
-        if (!event.candidate) {
-          console.log('localDescription Answer 2::', JSON.stringify(webRTCManager.connection.localDescription))
-        }
-      }
-
-      const answer = await webRTCManager.connection.createAnswer()
-      await webRTCManager.connection.setLocalDescription(answer)
-    } catch (error) {
-      console.error(error)
-      console.error('Remote Offer no pudo ser parseada', remoteOffer)
-    }
-  }
+  connectionManager.sendOffer()
 
   createEffect(() => {
     connectionManager.onMessage = e => {
       console.log("respuesta recibida::", e)
     }
-    Connect()
   },[])
 
-  return <div>
-    <h3>WebRTC Demo!</h3>
-    <div style={{ display: 'flex' }}>
-      Conecction State: {connectionState()} / ICE Conecction State: {iceConnectionState()}
-    </div>
-    <Show when={connectionState() !== 'connected'}> 
-      <h4>Local Descripcion</h4>
-      <div>{localDescription()}</div>
-      <div style={{ "margin-bottom": "1rem" }}></div>
-      <h4>Paste Remote Offer</h4>
-      <textarea class="ttx" rows={5} style={{ width: "100%" }} 
-        onChange={ev => { remoteOffer = ev.currentTarget.value }}
-      />
-      <button onClick={(ev) => {
-        ev.stopPropagation()
-        acceptRemoteOffer()
-      }}>
-        Accept Remote Offer
-      </button>
-      <h4>Created Answer</h4>
-      <div>{createdAnswer()}</div>
-      <h4>Paste Remote Answer</h4>
-      <textarea class="ttx" rows={5} style={{ width: "100%" }} 
-        onChange={ev => { remoteAnswer = ev.currentTarget.value }}
-      />
-      <button onClick={(ev) => {
-        ev.stopPropagation()
-        acceptRemoteAnswer()
-      }}>
-        Accept Remote Answer
-      </button>
-    </Show>
-    <Show when={connectionState() === 'connected'}> 
-      <h4>Message</h4>
-      <textarea ref={messageTextArea} class="ttx" rows={2} style={{ width: "100%" }} 
-        onChange={ev => { remoteAnswer = ev.currentTarget.value }}
-      />
-      <button onClick={(ev) => {
-        ev.stopPropagation()
-        if(messageTextArea && messageTextArea.value){
-          webRTCManager.channel.send(messageTextArea.value)
-          messageTextArea.value = ""
-        }
-      }}>
-        Send Message
-      </button>
+  const nowTime = Math.floor(Date.now()/1000)
 
-      <h4>Recived Messages</h4>
-      <For each={recivedMessages()}>
-      { e => {
-          return <div>{e}</div>
-        }
-      }
-      </For>
-    </Show>
+  return <div>
+    <h3>WebRTC Open Chat Room</h3>
+    <div class="w100 flex jc-between">
+      <div class="px-12 py-12" style={{ width: '28%' }}>
+        <div class="h3">Usuarios Conectados 1</div>
+        <Show when={loadingClients()}>
+          <div class="mt-08">Cargando usuarios...</div>
+        </Show>
+        <Show when={!loadingClients()}>
+          <For each={clients()}>
+            {client => {
+              const haceMin = Math.ceil((nowTime - client._updated)/60)
+
+              return <div class={"px-06 py-06 mt-08 " + s1.card_c1}>
+                <div class="w100 flex jc-between">
+                  <div>{client.id}</div>
+                  <div>Hace {haceMin} min</div>
+                </div>
+              </div>
+            }}
+          </For>
+        </Show>
+      </div>
+      <div class="px-12 py-12 grow-1">
+        <div class="h3">Chat</div>
+      </div>
+    </div>
   </div>
 }

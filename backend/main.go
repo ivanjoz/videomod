@@ -42,12 +42,13 @@ func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*e
 	}
 
 	args := core.HandlerArgs{
-		Body:      &request.Body,
-		Query:     request.QueryStringParameters,
-		Headers:   request.Headers,
-		Route:     route,
-		Method:    request.RequestContext.HTTP.Method,
-		EventType: request.RequestContext.EventType,
+		Body:         &request.Body,
+		Query:        request.QueryStringParameters,
+		Headers:      request.Headers,
+		Route:        route,
+		Method:       request.RequestContext.HTTP.Method,
+		EventType:    request.RequestContext.EventType,
+		ConnectionID: request.RequestContext.ConnectionID,
 	}
 
 	wssEvents := []string{"CONNECT", "DISCONNECT", "MESSAGE"}

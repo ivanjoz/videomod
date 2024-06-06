@@ -54,12 +54,18 @@ export const [iceConnectionState, setIceConnectionState] = createSignal("Pending
 export const [recivedMessages, setRecivedMessages] = createSignal([])
 export const [connectionState, setConnectionState] = createSignal("Pending")
 
+interface WsResponse {
+  accion: string
+  body: any
+}
+
 export class WebRTCManager {
 
   connection: RTCPeerConnection
   channel: RTCDataChannel
   offerString: string
   promiseOngoing: Promise<string>
+  suscriptions: Map<string, WeakRef<(response: any) => void>> = new Map()
 
   constructor(){
     this.connection = new RTCPeerConnection({ 
@@ -118,6 +124,10 @@ export class WebRTCManager {
     })
   }
 
+  on(accion: string, callback: (response: any) => void){
+    this.suscriptions.set(accion, new WeakRef(callback))
+  }
+
   async getOffer() {
     if(this.promiseOngoing){ return await this.promiseOngoing }
     if(this.offerString){ return this.offerString }
@@ -132,7 +142,8 @@ export class ConnectionManager {
   offerString: string
   onOpenPromise: Promise<any>
   ws: WebSocket
-  onMessage: (e: string) => void
+  suscriptions: Map<string, WeakRef<(response: any) => void>> = new Map()
+  onMessage: (e: any) => void
 
   constructor(){
     this.ws = new WebSocket('ws://127.0.0.1:3589/ws')
@@ -162,12 +173,23 @@ export class ConnectionManager {
       new Response(decompressedStream).blob().then((blob) => {
         return blob.text()
       }).then((responseText) => {
+        let response: WsResponse
         try {
-          responseText = JSON.parse(responseText)
+          response = JSON.parse(responseText)
         } catch (error) {
-          console.warn("La respuesta no es un JSON válido: ",responseText)
+          console.warn("La respuesta no es un JSON válido: ",response)
+          return
         }
-        if(this.onMessage){ this.onMessage(responseText) }
+        if(response.accion && typeof response.body !== 'undefined'){
+          const callback = this.suscriptions.get(response.accion)
+          if(callback?.deref()){
+            callback.deref()(response.body)
+          } else {
+            if(this.onMessage){ this.onMessage(response) }
+          }
+        } else {
+          if(this.onMessage){ this.onMessage(response) }
+        }
       })
     }
   
@@ -179,6 +201,10 @@ export class ConnectionManager {
     this.ws.onclose = () => {
       console.log('WebSocket connection closed')
     }
+  }
+
+  on(accion: string, callback: (response: any) => void){
+    this.suscriptions.set(accion, new WeakRef(callback))
   }
 
   async sendMessage(accion: string, messageBody: string){

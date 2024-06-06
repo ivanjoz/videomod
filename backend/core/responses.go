@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"github.com/DmitriyVTitov/size"
 	"github.com/andybalholm/brotli"
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
 	"github.com/gorilla/websocket"
 )
 
@@ -50,6 +52,33 @@ func PrintMemUsage() {
 	runtime.ReadMemStats(&m)
 	msg := fmt.Sprintf("nAlloc = %v MiB | TotalAlloc = %v | Sys = %v | NumGC = %v\n", m.Alloc/1024/1024, m.TotalAlloc/1024/1024, m.Sys/1024/1024, m.NumGC)
 	Log(msg)
+}
+
+var apiClient *apigatewaymanagementapi.Client
+
+func MakeAPIGatewayClient() *apigatewaymanagementapi.Client {
+	if apiClient == nil {
+		awsCfg := GetAwsConfig()
+
+		options := apigatewaymanagementapi.Options{
+			Credentials: awsCfg.Credentials,
+			Region:      awsCfg.Region,
+		}
+
+		apiClient = apigatewaymanagementapi.New(options)
+	}
+	return apiClient
+}
+
+func SendWebsocketMessage(connID string, data *[]byte) {
+	apiClient := MakeAPIGatewayClient()
+	_, err := apiClient.PostToConnection(context.TODO(),
+		&apigatewaymanagementapi.PostToConnectionInput{
+			Data: *data, ConnectionId: &connID,
+		})
+	if err != nil {
+		Log("Error al enviar mensaje a websocket: ", err)
+	}
 }
 
 func CompressBrotliOnFile(filePath string) []byte {
@@ -581,10 +610,19 @@ func makeHeaders() map[string]string {
 	return headers
 }
 
+type WebsocketResponse struct {
+	Accion string `json:"accion"`
+	Body   any    `json:"body"`
+}
+
 // Crea una respuesta serializando un struct
 func (req *HandlerArgs) MakeResponse(respStruct any) HandlerResponse {
 	if req.IsWebSocket {
-		bodyBytes, err := json.Marshal(respStruct)
+		response := WebsocketResponse{
+			Accion: req.Route,
+			Body:   respStruct,
+		}
+		bodyBytes, err := json.Marshal(response)
 		if err != nil {
 			return req.MakeErr("No se pudo serializar respuesta: " + err.Error())
 		}
@@ -598,8 +636,13 @@ func (req *HandlerArgs) MakeResponse(respStruct any) HandlerResponse {
 		}
 		bodyBytesCompressed := bodyCompressed.Bytes()
 		Log("Body bytes a enviar::", len(bodyBytesCompressed))
+
 		if req.WebSocketConn != nil {
 			req.WebSocketConn.WriteMessage(websocket.BinaryMessage, bodyBytesCompressed)
+		} else if len(req.ConnectionID) > 0 {
+			SendWebsocketMessage(req.ConnectionID, &bodyBytesCompressed)
+		} else {
+			panic("No se pudo enviar el mensaje (Sin ConnID ni Conn)")
 		}
 		return HandlerResponse{}
 	}
