@@ -2,7 +2,7 @@ import path from 'path'
 import fs from 'fs'
 const __dirname = new URL('.', import.meta.url).pathname;
 
-const buildFolder = path.join(__dirname,'.output','public')
+const buildFolder = path.join(__dirname,'frontend','.output','public')
 const staticFolder = path.join(__dirname.replace("/frontend",""),'docs')
 
 console.log("Build folder: ", buildFolder)

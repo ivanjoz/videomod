@@ -1,0 +1,1 @@
+import{q as r,h as a,t as o}from"./web-Y7BQqY1U.js";import{T as i}from"./index-BoHNyOnN.js";var m=o("<main><h1>About");function s(){return(()=>{var t=m(),e=t.firstChild;return r(t,a(i,{children:"About"}),e),t})()}export{s as default};
