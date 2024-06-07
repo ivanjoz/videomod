@@ -1,8 +1,17 @@
 "use client";
 import { For, Show, createEffect, createSignal } from "solid-js";
 import "video.js/dist/video-js.min.css";
-import { Connect, connectionManager, connectionState, iceConnectionState, recivedMessages, webRTCManager } from "~/services/connection";
-import s1 from '../styles/components.module.css'
+import { connectionManager } from "~/services/connection";
+import s1 from '../styles/components.module.css';
+import { LoadingBar } from "~/components/layout";
+
+interface IUserSelected {
+  userID: string
+  connID: string
+  connStatus: number
+  messages: string[]
+  error?: string
+}
 
 export default function Home() {
 
@@ -10,14 +19,18 @@ export default function Home() {
   const [createdAnswer, setCreatedAnswer] = createSignal("----------")
   const [loadingClients, setLoadingClients] = createSignal(true)
   const [clients, setClients] = createSignal([])
-  
+  const [userSelected, setUserSelected] = createSignal<IUserSelected>()
+
   if(typeof window === 'undefined'){ return <div>!</div> }
 
   connectionManager.on('PostRtcOffer', users => {
+    const usersFiltered = []
     for(let user of users){
+      if(user.id === connectionManager.clientID){ continue }
       user._updated = parseInt(user.updated,36) * 2
+      usersFiltered.push(user)
     }
-    setClients(users)
+    setClients(usersFiltered)
     console.log('Usuarios conectados::', users)
     setLoadingClients(false)
   })
@@ -38,14 +51,18 @@ export default function Home() {
       <div class="px-12 py-12" style={{ width: '28%' }}>
         <div class="h3">Usuarios Conectados 1</div>
         <Show when={loadingClients()}>
-          <div class="mt-08">Cargando usuarios...</div>
+          <LoadingBar msg="Cargando Usuarios..." />
         </Show>
         <Show when={!loadingClients()}>
           <For each={clients()}>
             {client => {
               const haceMin = Math.ceil((nowTime - client._updated)/60)
 
-              return <div class={"px-06 py-06 mt-08 " + s1.card_c1}>
+              return <div class={"px-06 py-06 mt-08 " + s1.card_c1} onClick={ev => {
+                ev.stopPropagation()
+                connectionManager.askConnection(client.id, "")
+                setUserSelected(client)
+              }}>
                 <div class="w100 flex jc-between">
                   <div>{client.id}</div>
                   <div>Hace {haceMin} min</div>
@@ -57,6 +74,9 @@ export default function Home() {
       </div>
       <div class="px-12 py-12 grow-1">
         <div class="h3">Chat</div>
+        <Show when={userSelected() && !userSelected().connStatus}>
+          <LoadingBar msg="Conectando con usuario..." />
+        </Show>
       </div>
     </div>
   </div>

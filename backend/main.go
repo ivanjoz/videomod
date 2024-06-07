@@ -133,11 +133,14 @@ func LocalWssHandler(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		message := string(messageBytes)
-		core.Log("Mensaje recibido: ", message)
+		core.Log("Mensaje recibido: ", len(message))
 		args := ParseWssMessage(&message)
 		args.IsWebSocket = true
 		args.WebSocketConn = ws
 
+		if len(args.ClientID) > 0 {
+			core.ConnectionMapper[args.ClientID] = ws
+		}
 		if len(args.ResponseError) > 0 {
 			core.Log(args.ResponseError)
 		}

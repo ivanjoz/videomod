@@ -220,9 +220,9 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
 .w-fit { width: fit-content; }
 .c-white { color: #ffffff; }
 .c-red { color: #ca2e2e; }
+.c-red2 { color: #ffbcbc; }
 body.dark .c-red { color: #ff9494; }
 .c-green { color: rgb(17, 156, 80); }
-.c-red2 { color: #a33434; }
 .c-yellow { color: #e5a000; }
 .c-steel { color: #475262; }
 
@@ -1252,4 +1252,47 @@ body.dark .b-blue:hover {
 
 .dsp-cont {
   display: 'contents';
+}
+
+/* Loading Effect */
+.pm-loading {
+  position: relative;
+  min-height: 2.4rem;
+  min-width: 5rem;
+  line-height: 1;
+  color: #ffffff;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.pm-loading > .bg {
+  position: absolute;
+  left: -46px;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+
+  background: repeating-linear-gradient(-55deg,
+      #000000 1px,
+      #323538 2px,
+      #393d42 11px,
+      #292827 12px,
+      #000000 20px);
+
+  animation-name: MOVE-BG;
+  animation-duration: 0.4s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* LOADING BAR */
+@keyframes MOVE-BG {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(46px);
+  }
 }

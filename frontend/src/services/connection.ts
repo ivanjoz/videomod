@@ -1,3 +1,4 @@
+"use client";
 import Dexie from 'dexie'
 import { createSignal } from 'solid-js'
 
@@ -55,29 +56,14 @@ export const [connectionState, setConnectionState] = createSignal("Pending")
 
 interface WsResponse { accion: string, body: any }
 
-export class ConnectionManager {
+export class RTCManager {
 
-  clientID: string
-  onOpenPromise: Promise<any>
-  worker: SharedWorker
-  ws: WebSocket
-  wsConnectionStatus: number = 0
-  suscriptions: Map<string, WeakRef<(response: any) => void>> = new Map()
-  onMessage: (e: any) => void
-  workerPromiseResolver: () => void
-  // WebRTC
   offerString: string
   connection: RTCPeerConnection
   channel: RTCDataChannel
-  promiseRtcOngoing: Promise<string>
+  promiseOngoing: Promise<string>
 
-  constructor(){
-    if(typeof window === 'undefined'){ 
-      console.log("We are not in the browser")
-      return 
-    }
-
-    // WebRTC
+  constructor(isOffer?: boolean){
     this.connection = new RTCPeerConnection({ 
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] 
     })
@@ -93,29 +79,27 @@ export class ConnectionManager {
     }
 
     let iceCandidateResolve: (offerString: string) => void
-    this.promiseRtcOngoing = new Promise(r => { iceCandidateResolve = r })
+    this.promiseOngoing = new Promise(r => { iceCandidateResolve = r })
     
-    this.connection.onicecandidate = (event) => {
-      const offer =  JSON.stringify(this.connection.localDescription)
-      const IP = getIpFromCandidate(offer).split(".").filter(x => x)
-      if(IP[0] === 'localhost' || IP[0] === '0' || IP[0] === '127'){ 
-        return
+    this.connection.onicecandidate = () => {
+      if(this.connection.localDescription.type == 'offer'){
+        const offer =  JSON.stringify(this.connection.localDescription)
+        const IP = getIpFromCandidate(offer).split(".").filter(x => x)
+        if(IP[0] === 'localhost' || IP[0] === '0' || IP[0] === '127'){ 
+          return
+        }
+        // The offer with the correct public IP is ready here (previuos offers are generated with private IP)
+        this.offerString = JSON.stringify(this.connection.localDescription)
+        console.log("resolviendo offer string::", this.offerString)
+        iceCandidateResolve(this.offerString)
+        this.promiseOngoing = null
       }
-      // The offer with the correct public IP is ready here (previuos offers are generated with private IP)
-      this.offerString = JSON.stringify(this.connection.localDescription)
-      console.log("resolviendo offer string::", this.offerString)
-      iceCandidateResolve(this.offerString)
-      this.promiseRtcOngoing = null
-    }
-
-    const onmessage = (event: MessageEvent) => {
-      setRecivedMessages([...recivedMessages(), event.data])
     }
 
     this.connection.ondatachannel = (event) => {
       console.log('ondatachannel')
       this.channel = event.channel
-      this.channel.onmessage = onmessage
+      this.channel.onmessage = ev => this.onMessage(ev)
     }
   
     this.connection.onnegotiationneeded = async (ev) => {
@@ -124,12 +108,83 @@ export class ConnectionManager {
 
     this.channel = this.connection.createDataChannel('data')
     this.channel.onopen = event => console.log('onopen', event)
-    this.channel.onmessage = onmessage
+    this.channel.onmessage = ev => this.onMessage(ev)
 
-    this.connection.createOffer().
-    then((offer) => {
-      this.connection.setLocalDescription(offer)
+    if(isOffer){
+      this.connection.createOffer().then((offer) => {
+        console.log("offer generated::", offer)
+        this.connection.setLocalDescription(offer)
+      })
+    }
+  }
+  
+  async getOffer(){
+    return this.promiseOngoing ? await this.promiseOngoing : this.offerString
+  }
+
+  async acceptOfferRequest(remoteOffer: string): Promise<string> {
+    await this.connection.setRemoteDescription(JSON.parse(remoteOffer))
+    console.log("Waiting for answer...")
+    let iceAnswer = ""
+    const promise = new Promise<string>(r => {
+      this.connection.onicecandidate = () => {
+        if(this.connection.localDescription.type == 'answer'){
+          iceAnswer = JSON.stringify(this.connection.localDescription)
+          r(iceAnswer)
+        }
+      }
     })
+    const localAnswer = await this.connection.createAnswer()
+    await this.connection.setLocalDescription(localAnswer)
+    return iceAnswer ? iceAnswer : await promise
+  }
+
+  async acceptRemoteAnswer(remoteAnswer: string){
+    if(!remoteAnswer){ return }
+    try {
+      await this.connection.setRemoteDescription(JSON.parse(remoteAnswer)) 
+      localStorage.setItem("savedRemoteAnswer", remoteAnswer)
+    } catch (error) {
+      console.error(error)
+      console.error('Remote Answer no pudo ser parseada', remoteAnswer)
+    }
+    console.log("Conexión establecida mediante Remote Answer!!")
+  }
+  
+  onMessage(event: MessageEvent){
+    
+  }
+}
+
+interface IConnectionRequest {
+  ClientAskID: string
+  ClientFromID: string
+  ConnID: string
+  Offer: string
+  Answer?: string
+}
+
+export class ConnectionManager {
+
+  clientID: string
+  onOpenPromise: Promise<any>
+  worker: SharedWorker
+  ws: WebSocket
+  wsConnectionStatus: number = 0
+  suscriptions: Map<string, (response: any) => void> = new Map()
+  onMessage: (e: any) => void
+  workerPromiseResolver: () => void
+  // WebRTC
+  rtcManager: RTCManager
+  userRTCConnectionMap: Map<string,RTCManager> = new Map()
+ 
+  constructor(){
+    if(typeof window === 'undefined'){ 
+      console.log("We are not in the browser"); return 
+    }
+
+    // WebRTC
+    this.rtcManager = new RTCManager(true)
 
     // Shared Wss Worker
     this.worker = new SharedWorker(new URL('~/worker/worker.ts', import.meta.url), {
@@ -151,10 +206,15 @@ export class ConnectionManager {
       } else if(workerAccion === 'wssMessage'){
         const response = content as WsResponse
         console.log("Respuesta Websocket::", response)
+        if(response.accion === "AskRTCConnection" && response.body){
+          this.handleRTCConnectionRequest(response.body)
+        } else if(response.accion === "AnswerRTCConnection" && response.body){
+          this.handleRTCConnectionRequest(response.body)
+        }
 
         const callback = this.suscriptions.get(response.accion)
-        if(callback?.deref()){
-          callback.deref()(response.body)
+        if(callback){
+          callback(response.body)
         } else {
           if(this.onMessage){ this.onMessage(response) }
         }
@@ -179,7 +239,7 @@ export class ConnectionManager {
   }
 
   on(accion: string, callback: (response: any) => void){
-    this.suscriptions.set(accion, new WeakRef(callback))
+    this.suscriptions.set(accion, callback)
   }
 
   async sendMessage(accion: string, messageBody: string){
@@ -189,14 +249,50 @@ export class ConnectionManager {
     this.worker.port.postMessage(['sendMessage', message])
   }
 
-  async getOffer(){
-    return this.promiseRtcOngoing ? (await this.promiseRtcOngoing) : this.offerString
+  getRtcManager(ClientID: string, reload?: boolean){
+    if(!this.userRTCConnectionMap.has(ClientID)){
+      this.userRTCConnectionMap.set(ClientID, new RTCManager(true))
+    }
+    return this.userRTCConnectionMap.get(ClientID)
   }
 
   async sendOffer(){
-    const offerString = await this.getOffer()
+    const offerString = await this.rtcManager.getOffer()
     const message = { offer: offerString }
     await this.sendMessage("PostRtcOffer", JSON.stringify(message))
+  }
+
+  // Paso 1: Enviar Offer hacia ClientAskID
+  async askConnection(ClientAskID: string, ConnID: string){
+    console.log("Generando RTC Offer...", ClientAskID)
+    const rtcManager = this.getRtcManager(ClientAskID)
+    const rtcOffer = await rtcManager.getOffer()
+    console.log("rtc offer generado:: ", rtcOffer)
+    const connRequest = { ClientAskID, ConnID, Offer: rtcOffer }
+    await this.sendMessage("AskRTCConnection", JSON.stringify(connRequest))
+  }
+
+  // Paso 2: Recibir Offer y enviar Answer hacia ClientFromID
+  async handleRTCConnectionRequest(req: IConnectionRequest){
+    if(!req.ClientFromID || !req.Offer){
+      console.warn("No ClientFromID in request::", req)
+      return
+    }
+    const rtcManager = this.getRtcManager(req.ClientFromID)
+    req.Answer = await rtcManager.acceptOfferRequest(req.Offer)
+    req.Offer = ""
+    this.sendMessage("AnswerRTCConnection", JSON.stringify(req))
+  }
+
+  // Paso 3: Recibir Answer y establecer conexión
+  async handleRTCConnectionAnswer(req: IConnectionRequest){
+    if(!req.ClientAskID || !req.Answer){
+      console.warn("No ClientFromID in request::", req)
+      return
+    }
+    const rtcManager = this.getRtcManager(req.ClientFromID)
+    console.log("Aceptando remote answer y estableciendo conexión::",req.Answer)
+    await rtcManager.acceptRemoteAnswer(req.Answer)
   }
 }
 

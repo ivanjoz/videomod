@@ -62,6 +62,7 @@ wss.onmessage = (event) => {
       return
     }
     console.log("respuesta websocket::", response)
+    console.log("connected ports::", connectedPorts.size)
     for(let [_, port] of connectedPorts){
       port.postMessage(["wssMessage",response]) 
     }

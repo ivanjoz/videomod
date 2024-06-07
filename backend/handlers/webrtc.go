@@ -33,7 +33,7 @@ func MakeClientTable() aws.DynamoTableRecords[RtcClientOffer] {
 }
 
 func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
-	core.Log("Body recibido::", *args.Body)
+	// core.Log("Body recibido::", *args.Body)
 	offer := RtcClientOffer{}
 	offer.Updated = core.ToBase36(time.Now().Unix() / 2)
 
@@ -49,9 +49,6 @@ func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
 	}
 
 	offer.ClientID = args.ClientID
-
-	core.Print(offer)
-
 	dynamoTable := MakeClientTable()
 	dynamoTable.PutItem(&offer, 1)
 
@@ -66,4 +63,63 @@ func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
 	core.Log("Número de conexiones obtenidas::", len(records))
 
 	return args.MakeResponse(records)
+}
+
+type rtcConnectionRequest struct {
+	ClientAskID  string
+	ClientFromID string
+	ConnID       string
+	Offer        string
+	Answer       string
+}
+
+func AskRTCConnection(args *core.HandlerArgs) core.HandlerResponse {
+	core.Log("Body recibido::", *args.Body)
+
+	request := rtcConnectionRequest{}
+	err := json.Unmarshal([]byte(*args.Body), &request)
+	if err != nil {
+		core.Log("Error al interpretar el mensaje:", err)
+		return core.HandlerResponse{}
+	}
+
+	if request.ClientAskID == "" || request.Offer == "" {
+		core.Log("No se recibió el ClientID o Offer")
+		return core.HandlerResponse{}
+	}
+
+	request.ClientFromID = args.ClientID
+	// Si estamos dentro de una Lambda y enviamos por Api-Gateway
+	if args.ConnectionID != "" {
+
+	} else {
+		return args.MakeResponse(request, request.ClientAskID)
+	}
+
+	return core.HandlerResponse{}
+}
+
+func AnswerRTCConnection(args *core.HandlerArgs) core.HandlerResponse {
+	core.Log("Body recibido::", *args.Body)
+
+	request := rtcConnectionRequest{}
+	err := json.Unmarshal([]byte(*args.Body), &request)
+	if err != nil {
+		core.Log("Error al interpretar el mensaje:", err)
+		return core.HandlerResponse{}
+	}
+
+	if request.ClientFromID == "" || request.Answer == "" {
+		core.Log("No se recibió el ClientID o Answer")
+		return core.HandlerResponse{}
+	}
+
+	// Si estamos dentro de una Lambda y enviamos por Api-Gateway
+	if args.ConnectionID != "" {
+
+	} else {
+		return args.MakeResponse(request, request.ClientFromID)
+	}
+
+	return core.HandlerResponse{}
 }
