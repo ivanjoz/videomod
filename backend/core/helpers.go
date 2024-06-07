@@ -1369,3 +1369,97 @@ func ConcatInt64(num1, num2 int64) int64 {
 	}
 	return num1*10_000_000_000 + num2
 }
+
+// Base94 encoding takes 9 input bytes of 8 bits each, uses those to construct a 72-bit integer, and then converts that to an 11-digit base-94 number, and encodes that number using the ASCII characters ! (33) through ~ (126):
+func Base94Encode(data []byte) string {
+	var encodeChunk = func(chunk []byte) string {
+		// Convert the 9-byte chunk to a 72-bit integer
+		var value big.Int
+		value.SetBytes(chunk)
+
+		// Base94 encode the integer
+		var encoded bytes.Buffer
+		for i := 0; i < 11; i++ {
+			remainder := new(big.Int)
+			value.DivMod(&value, big.NewInt(94), remainder)
+			encoded.WriteByte(byte(remainder.Int64()) + 33)
+		}
+
+		// Reverse the string because we construct it in reverse order
+		encodedBytes := encoded.Bytes()
+		for i, j := 0, len(encodedBytes)-1; i < j; i, j = i+1, j-1 {
+			encodedBytes[i], encodedBytes[j] = encodedBytes[j], encodedBytes[i]
+		}
+
+		fmt.Println("encodedBytes: ", len(data), " | ", len(encodedBytes))
+		return string(encodedBytes)
+	}
+
+	var encoded bytes.Buffer
+
+	// Process data in chunks of 9 bytes
+	for len(data) >= 9 {
+		encoded.WriteString(encodeChunk(data[:9]))
+		data = data[9:]
+	}
+
+	padding := 0
+
+	// Handle remaining bytes
+	if len(data) > 0 {
+		padding = 9 - len(data)
+		// Pad the remaining bytes with zeros to make a full chunk
+		padded := make([]byte, 9)
+		copy(padded, data)
+		encoded.WriteString(encodeChunk(padded))
+	}
+
+	return fmt.Sprint(padding) + encoded.String()
+}
+
+func Base94Decode(encoded string) ([]byte, error) {
+	// convert string to int
+	paddingBytes, _ := strconv.Atoi(encoded[0:1])
+	encoded = encoded[1:]
+
+	var decodeChunk = func(encoded string) ([]byte, error) {
+		if len(encoded) != 11 {
+			return nil, fmt.Errorf("encoded chunk length must be %d", 11)
+		}
+
+		// Convert the base94 string to a 72-bit integer
+		value := big.NewInt(0)
+		for i := 0; i < 11; i++ {
+			char := encoded[i] - 33
+			value.Mul(value, big.NewInt(94))
+			value.Add(value, big.NewInt(int64(char)))
+		}
+
+		// Convert the 72-bit integer to a 9-byte chunk
+		decoded := value.Bytes()
+		if len(decoded) < 9 {
+			padded := make([]byte, 9)
+			copy(padded[9-len(decoded):], decoded)
+			decoded = padded
+		}
+
+		return decoded, nil
+	}
+
+	var decoded bytes.Buffer
+
+	if len(encoded)%11 != 0 {
+		return nil, fmt.Errorf("encoded string length must be a multiple of %d", 11)
+	}
+
+	for i := 0; i < len(encoded); i += 11 {
+		chunk, err := decodeChunk(encoded[i : i+11])
+		if err != nil {
+			return nil, err
+		}
+		decoded.Write(chunk)
+	}
+
+	decodedBytes := decoded.Bytes()
+	return decodedBytes[:len(decodedBytes)-paddingBytes], nil
+}

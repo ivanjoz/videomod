@@ -1,6 +1,7 @@
 import Dexie from 'dexie'
 import { createSignal } from 'solid-js'
 import { GetWssAPI } from '~/app'
+import { base94Encode } from '~/core/halpers'
 
 let dexieInitPromise: Promise<void>
 let dexiedb: Dexie
@@ -212,8 +213,10 @@ export class ConnectionManager {
     if(this.onOpenPromise){ await this.onOpenPromise }
     console.log('Client-ID a enviar::', this.clientID)
     const message = { a: accion, b: messageBody, c: this.clientID }
-    // const array8int = await compressStringWithGzip(JSON.stringify(message))
-    this.ws.send(JSON.stringify(message))
+    const array8int = await compressStringWithGzip(JSON.stringify(message))
+    console.log("bytes enviados::", array8int.length)
+    const base94string = base94Encode(array8int)
+    this.ws.send(base94string)
   }
 
   async sendOffer(){

@@ -2,6 +2,7 @@ package main
 
 import (
 	"app/core"
+	"app/handlers"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,8 +12,6 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
-
-	"unicode/utf8"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -52,7 +51,7 @@ func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*e
 			return &events.APIGatewayProxyResponse{StatusCode: 200, Body: "OK"}, nil
 		}
 		fmt.Println("Parseando websocket:: ", args.ConnectionID)
-		awsArgs := ParseWssMessage([]byte(request.Body))
+		awsArgs := ParseWssMessage(&request.Body)
 		args.Body = awsArgs.Body
 		args.Route = awsArgs.Route
 		args.ClientID = awsArgs.ClientID
@@ -90,20 +89,15 @@ func LocalHandler(w http.ResponseWriter, request *http.Request) {
 		Body:           &body,
 		Method:         strings.ToUpper(request.Method),
 		Route:          request.URL.Path,
+		Headers:        map[string]string{},
+		Query:          map[string]string{},
 		ResponseWriter: &w,
 	}
 
-	// Convierte los query params en un map[string]: stirng
-	queryString := request.URL.Query()
-	args.Query = make(map[string]string)
-
-	for key, values := range queryString {
+	for key, values := range request.URL.Query() {
 		value := strings.Join(values[:], ",")
 		args.Query[key] = value
 	}
-
-	// Convierte los headers en un map[string]: string
-	args.Headers = make(map[string]string)
 
 	for key, values := range request.Header {
 		value := strings.Join(values[:], ",")
@@ -133,29 +127,39 @@ func LocalWssHandler(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		// Read in a new message as JSON and map it to a Message object
-		_, message, err := ws.ReadMessage()
+		_, messageBytes, err := ws.ReadMessage()
 		if err != nil {
 			log.Printf("error: %v", err)
 			break
 		}
-		// Print the message to the console
-		core.Log("Is UTF-8:", utf8.Valid(message))
-		if !utf8.Valid(message) {
-			message = core.DecompressGzipBytes(&message)
-		}
-		core.Log("Recibido: ", string(message))
-		args := ParseWssMessage(message)
+		message := string(messageBytes)
+		core.Log("Mensaje recibido: ", message)
+		args := ParseWssMessage(&message)
 		args.IsWebSocket = true
 		args.WebSocketConn = ws
+
+		if len(args.ResponseError) > 0 {
+			core.Log(args.ResponseError)
+		}
 		mainHandler(args)
 	}
 }
 
-func ParseWssMessage(messageRaw []byte) core.HandlerArgs {
-	message := core.WsMessage{}
-	err := json.Unmarshal(messageRaw, &message)
+func ParseWssMessage(body *string) core.HandlerArgs {
+	compressedBytes, err := core.Base94Decode(*body)
 	if err != nil {
-		core.Log("Error al interpretar el mensaje:", err)
+		return core.HandlerArgs{
+			ResponseError: fmt.Sprintf("Error al decodificar el mensaje: %v", err),
+		}
+	}
+	core.Log("bytes comprimidos::", len(compressedBytes))
+	messageRaw := core.DecompressGzipBytes(&compressedBytes)
+	message := core.WsMessage{}
+	err = json.Unmarshal(messageRaw, &message)
+	if err != nil {
+		return core.HandlerArgs{
+			ResponseError: fmt.Sprintf("Error al deserializar el mensaje: %v", err),
+		}
 	}
 	return core.HandlerArgs{
 		Body:     &message.Body,
@@ -181,9 +185,14 @@ func main() {
 		}()
 	}
 
-	for _, value := range os.Args {
+	for _, value := range os.Args[1:] {
+		fmt.Println("Argumento: ", value)
 		if value == "prod" {
 			core.Env.APP_CODE = "app-prod"
+		}
+		if fn, ok := handlers.DemoFuncs[value]; ok {
+			fn()
+			return
 		}
 	}
 

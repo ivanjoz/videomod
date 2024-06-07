@@ -653,7 +653,10 @@ func (req *HandlerArgs) MakeResponse(respStruct any) HandlerResponse {
 		if req.WebSocketConn != nil {
 			req.WebSocketConn.WriteMessage(websocket.BinaryMessage, bodyBytesCompressed)
 		} else if len(req.ConnectionID) > 0 {
-			SendWebsocketMessage(req.ConnectionID, &bodyBytesCompressed)
+			// Convert to base64 because AWS WebSocket API Gateway does not support binary messages
+			bodyBase64Bytes := []byte{}
+			base64.StdEncoding.Encode(bodyBase64Bytes, bodyBytesCompressed)
+			SendWebsocketMessage(req.ConnectionID, &bodyBase64Bytes)
 		} else {
 			panic("No se pudo enviar el mensaje (Sin ConnID ni Conn)")
 		}

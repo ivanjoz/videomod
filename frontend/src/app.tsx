@@ -4,6 +4,7 @@ import { Router } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
 import { Suspense } from "solid-js";
 import "@styles/global.css";
+import { testBase94encode } from "./core/halpers";
 
 export const GetWssAPI = () => {
   if(typeof window === 'undefined'){
@@ -19,6 +20,7 @@ export const GetWssAPI = () => {
 export default function App() {
 
   const myWorker = new Worker("worker.js");
+  testBase94encode()
   
   myWorker.onmessage = (e) => {
     console.log("Message received from worker", e.data);
