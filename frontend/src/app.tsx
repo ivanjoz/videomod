@@ -19,13 +19,6 @@ export const GetWssAPI = () => {
 
 export default function App() {
 
-  const myWorker = new Worker("worker.js");
-  testBase94encode()
-  
-  myWorker.onmessage = (e) => {
-    console.log("Message received from worker", e.data);
-  };
-
   return (
     <Router
       root={props => (

@@ -1391,7 +1391,7 @@ func Base94EncodeBytes(data []byte) []byte {
 			encodedBytes[i], encodedBytes[j] = encodedBytes[j], encodedBytes[i]
 		}
 
-		fmt.Println("encodedBytes: ", len(data), " | ", len(encodedBytes))
+		// fmt.Println("encodedBytes: ", len(data), " | ", len(encodedBytes))
 		return string(encodedBytes)
 	}
 

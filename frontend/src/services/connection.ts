@@ -1,7 +1,5 @@
 import Dexie from 'dexie'
 import { createSignal } from 'solid-js'
-import { GetWssAPI } from '~/app'
-import { base94Decode, base94Encode } from '~/core/halpers'
 
 let dexieInitPromise: Promise<void>
 let dexiedb: Dexie
@@ -45,10 +43,9 @@ const getClientID = async () => {
 }
 
 const getIpFromCandidate = (offer: string) => {
-  // const ix1 = offer.indexOf('webrtc-datachannel')
   const ix1 = offer.indexOf('nc=IN IP4')
   const ix2 = offer.indexOf('\\r',ix1+10)
-  const IP = offer.substring(ix1+10,ix2).trim()
+  const IP  = offer.substring(ix1+10,ix2).trim()
   return IP
 }
 
@@ -56,20 +53,31 @@ export const [iceConnectionState, setIceConnectionState] = createSignal("Pending
 export const [recivedMessages, setRecivedMessages] = createSignal([])
 export const [connectionState, setConnectionState] = createSignal("Pending")
 
-interface WsResponse {
-  accion: string
-  body: any
-}
+interface WsResponse { accion: string, body: any }
 
-export class WebRTCManager {
+export class ConnectionManager {
 
+  clientID: string
+  onOpenPromise: Promise<any>
+  worker: SharedWorker
+  ws: WebSocket
+  wsConnectionStatus: number = 0
+  suscriptions: Map<string, WeakRef<(response: any) => void>> = new Map()
+  onMessage: (e: any) => void
+  workerPromiseResolver: () => void
+  // WebRTC
+  offerString: string
   connection: RTCPeerConnection
   channel: RTCDataChannel
-  offerString: string
-  promiseOngoing: Promise<string>
-  suscriptions: Map<string, WeakRef<(response: any) => void>> = new Map()
+  promiseRtcOngoing: Promise<string>
 
   constructor(){
+    if(typeof window === 'undefined'){ 
+      console.log("We are not in the browser")
+      return 
+    }
+
+    // WebRTC
     this.connection = new RTCPeerConnection({ 
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] 
     })
@@ -85,7 +93,7 @@ export class WebRTCManager {
     }
 
     let iceCandidateResolve: (offerString: string) => void
-    this.promiseOngoing = new Promise(r => { iceCandidateResolve = r })
+    this.promiseRtcOngoing = new Promise(r => { iceCandidateResolve = r })
     
     this.connection.onicecandidate = (event) => {
       const offer =  JSON.stringify(this.connection.localDescription)
@@ -93,15 +101,13 @@ export class WebRTCManager {
       if(IP[0] === 'localhost' || IP[0] === '0' || IP[0] === '127'){ 
         return
       }
-      //LA OFFER QUE VALE ES LA DE AQUÍ!!
-      // console.log('offer ip', getIpFromCandidate(offer))
-      // console.log('onicecandidate', JSON.stringify(this.connection.localDescription))
+      // The offer with the correct public IP is ready here (previuos offers are generated with private IP)
       this.offerString = JSON.stringify(this.connection.localDescription)
       console.log("resolviendo offer string::", this.offerString)
       iceCandidateResolve(this.offerString)
-      this.promiseOngoing = null
+      this.promiseRtcOngoing = null
     }
-    
+
     const onmessage = (event: MessageEvent) => {
       setRecivedMessages([...recivedMessages(), event.data])
     }
@@ -124,38 +130,41 @@ export class WebRTCManager {
     then((offer) => {
       this.connection.setLocalDescription(offer)
     })
-  }
 
-  on(accion: string, callback: (response: any) => void){
-    this.suscriptions.set(accion, new WeakRef(callback))
-  }
+    // Shared Wss Worker
+    this.worker = new SharedWorker(new URL('~/worker/worker.ts', import.meta.url), {
+      type: 'module',
+    })
 
-  async getOffer() {
-    if(this.promiseOngoing){ return await this.promiseOngoing }
-    if(this.offerString){ return this.offerString }
-  }
-}
+    this.worker.port.start()
 
-export const webRTCManager = new WebRTCManager()
+    this.worker.port.onmessage = (e) => {
+      const [workerAccion,content] = e.data
+      console.log("Worker Message Recived::", workerAccion, content) 
+      if(workerAccion === 'connectionStatus'){
+        this.wsConnectionStatus = content
+        console.log("Recived ConnectionStatus::", content) 
+        if(this.workerPromiseResolver){ this.workerPromiseResolver() }
+      } else if(workerAccion === 'connectionError'){
+        console.log("Recived ConnectionError::", content)
+      // Respuesta del Websocket
+      } else if(workerAccion === 'wssMessage'){
+        const response = content as WsResponse
+        console.log("Respuesta Websocket::", response)
 
-export class ConnectionManager {
-
-  clientID: string
-  offerString: string
-  onOpenPromise: Promise<any>
-  ws: WebSocket
-  suscriptions: Map<string, WeakRef<(response: any) => void>> = new Map()
-  onMessage: (e: any) => void
-
-  constructor(){
-    this.ws = new WebSocket(GetWssAPI())
-    
-    this.onOpenPromise = Promise.all([
-      new Promise<void>((resolve) => {
-        this.ws.onopen = async () => {
-          console.log('WebSocket is connected')
-          resolve()
+        const callback = this.suscriptions.get(response.accion)
+        if(callback?.deref()){
+          callback.deref()(response.body)
+        } else {
+          if(this.onMessage){ this.onMessage(response) }
         }
+      }
+    }
+
+    this.onOpenPromise = Promise.all([
+      new Promise<void>((p) => {
+        this.workerPromiseResolver = p
+        this.worker.port.postMessage(['getConnectionStatus'])
       }),
       new Promise<void>((resolve) => {
         getClientID().then(id => {
@@ -167,47 +176,6 @@ export class ConnectionManager {
     ]).then(() => {
       delete this.onOpenPromise
     })
-
-    this.ws.onmessage = (event) => {
-      const base94gzString = event.data
-      console.log("bytes recibidos por decodificar::", base94gzString.length)
-      const base94gzArray = base94Decode(base94gzString)
-      console.log("bytes recibidos decodificados::", base94gzArray.length)
-      const blob = new Blob([base94gzArray], { type: 'application/gzip' })
-      const ds = new DecompressionStream('gzip');
-      const decompressedStream = blob.stream().pipeThrough(ds);
-
-      new Response(decompressedStream).blob().then((blob) => {
-        return blob.text()
-      }).then((responseText) => {
-        let response: WsResponse
-        try {
-          response = JSON.parse(responseText)
-        } catch (error) {
-          console.warn("La respuesta no es un JSON válido: ",response)
-          return
-        }
-        if(response.accion && typeof response.body !== 'undefined'){
-          const callback = this.suscriptions.get(response.accion)
-          if(callback?.deref()){
-            callback.deref()(response.body)
-          } else {
-            if(this.onMessage){ this.onMessage(response) }
-          }
-        } else {
-          if(this.onMessage){ this.onMessage(response) }
-        }
-      })
-    }
-  
-    this.ws.onerror = (error) => {
-      console.log(error)
-      console.log(`WebSocket error: ${error}`)
-    }
-  
-    this.ws.onclose = () => {
-      console.log('WebSocket connection closed')
-    }
   }
 
   on(accion: string, callback: (response: any) => void){
@@ -218,14 +186,15 @@ export class ConnectionManager {
     if(this.onOpenPromise){ await this.onOpenPromise }
     console.log('Client-ID a enviar::', this.clientID)
     const message = { a: accion, b: messageBody, c: this.clientID }
-    const array8int = await compressStringWithGzip(JSON.stringify(message))
-    console.log("bytes enviados::", array8int.length)
-    const base94string = base94Encode(array8int)
-    this.ws.send(base94string)
+    this.worker.port.postMessage(['sendMessage', message])
+  }
+
+  async getOffer(){
+    return this.promiseRtcOngoing ? (await this.promiseRtcOngoing) : this.offerString
   }
 
   async sendOffer(){
-    const offerString = await webRTCManager.getOffer()
+    const offerString = await this.getOffer()
     const message = { offer: offerString }
     await this.sendMessage("PostRtcOffer", JSON.stringify(message))
   }
@@ -242,7 +211,7 @@ export const compressStringWithGzip =  async (inputString: string): Promise<Uint
   const encoder = new TextEncoder()
   const data = encoder.encode(inputString)
 
-  const compressionStream = new window.CompressionStream('gzip')
+  const compressionStream = new self.CompressionStream('gzip')
   const writer = compressionStream.writable.getWriter()
 
   writer.write(data)
