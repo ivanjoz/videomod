@@ -47,11 +47,13 @@ export const base94Encode = (data: Uint8Array): string => {
   return String(paddingSize) + encoded;
 }
 
-export const Base94Decode = (encoded: string): Uint8Array => {
-  const paddingSize = parseInt(encoded[0]);
-  encoded = encoded.slice(1);
-  const encodedChunkSize = 11;
-  const chunkSize = 9;
+export const base94Decode = (encoded: string): Uint8Array => {
+  const paddingSize = parseInt(encoded[0])
+  encoded = encoded.slice(1)
+  const encodedChunkSize = 11
+  const chunkSize = 9
+  // const binarySize = ((encoded.length / encodedChunkSize) * 9) - paddingSize
+  // console.log("expected binarySize::", binarySize)
 
   const decodeChunk = (chunk: string) => {
     const asciiOffset = 33;
@@ -63,12 +65,12 @@ export const Base94Decode = (encoded: string): Uint8Array => {
     // Convert the base94 string to a 72-bit integer
     let value = BigInt(0);
     for (let i = 0; i < chunk.length; i++) {
-        let char = BigInt(chunk.charCodeAt(i) - asciiOffset);
+        const char = BigInt(chunk.charCodeAt(i) - asciiOffset);
         value = value * BigInt(94) + char;
     }
 
     // Convert the 72-bit integer to a 9-byte chunk
-    let decoded = [];
+    const decoded = [];
     for (let i = chunkSize - 1; i >= 0; i--) {
         decoded[i] = Number(value & BigInt(0xff));
         value >>= BigInt(8);
@@ -81,15 +83,20 @@ export const Base94Decode = (encoded: string): Uint8Array => {
       throw new Error(`Encoded string length must be a multiple of ${encodedChunkSize}`);
   }
 
-  let decoded = [];
+  const decoded: number[] = [];
 
   for (let i = 0; i < encoded.length; i += encodedChunkSize) {
-      let chunk = encoded.slice(i, i + encodedChunkSize);
-      let decodedChunk = decodeChunk(chunk);
+      const chunk = encoded.slice(i, i + encodedChunkSize);
+      let decodedChunk = decodeChunk(chunk);      
+      if(paddingSize && i === (encoded.length - encodedChunkSize)){
+        decodedChunk = decodedChunk.slice(0, 9 - paddingSize)
+      }
       decoded.push(...decodedChunk);
   }
 
-  return new Uint8Array(decoded);
+  const binaryDecoded = new Uint8Array(decoded)
+  // console.log("final binarySize::", binaryDecoded.length)
+  return binaryDecoded
 }
 
 export const testBase94encode = () => {
@@ -100,7 +107,7 @@ export const testBase94encode = () => {
   const data = encoder.encode(dataString)
   const encoded = base94Encode(data)
   console.log("encoded:", encoded)
-  const decoded = Base94Decode(encoded)
+  const decoded = base94Decode(encoded)
   const decoder = new TextDecoder()
   const decodedString = decoder.decode(decoded)
   console.log("decoded:", decodedString)

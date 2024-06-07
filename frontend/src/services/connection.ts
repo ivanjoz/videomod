@@ -1,7 +1,7 @@
 import Dexie from 'dexie'
 import { createSignal } from 'solid-js'
 import { GetWssAPI } from '~/app'
-import { base94Encode } from '~/core/halpers'
+import { base94Decode, base94Encode } from '~/core/halpers'
 
 let dexieInitPromise: Promise<void>
 let dexiedb: Dexie
@@ -169,9 +169,14 @@ export class ConnectionManager {
     })
 
     this.ws.onmessage = (event) => {
-      const blob = event.data
+      const base94gzString = event.data
+      console.log("bytes recibidos por decodificar::", base94gzString.length)
+      const base94gzArray = base94Decode(base94gzString)
+      console.log("bytes recibidos decodificados::", base94gzArray.length)
+      const blob = new Blob([base94gzArray], { type: 'application/gzip' })
       const ds = new DecompressionStream('gzip');
       const decompressedStream = blob.stream().pipeThrough(ds);
+
       new Response(decompressedStream).blob().then((blob) => {
         return blob.text()
       }).then((responseText) => {

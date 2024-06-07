@@ -647,16 +647,17 @@ func (req *HandlerArgs) MakeResponse(respStruct any) HandlerResponse {
 		if err := gz.Close(); err != nil {
 			log.Fatal(err)
 		}
+		bodyBytes = nil
 		bodyBytesCompressed := bodyCompressed.Bytes()
-		Log("Body bytes a enviar::", len(bodyBytesCompressed))
+		// Convert to base64 string because AWS WebSocket API Gateway does not support binary messages
+		base94message := Base94EncodeBytes(bodyBytesCompressed)
+		bodyBytesCompressed = nil
+		Log("Body bytes a enviar::", len(base94message))
 
 		if req.WebSocketConn != nil {
-			req.WebSocketConn.WriteMessage(websocket.BinaryMessage, bodyBytesCompressed)
+			req.WebSocketConn.WriteMessage(websocket.TextMessage, base94message)
 		} else if len(req.ConnectionID) > 0 {
-			// Convert to base64 because AWS WebSocket API Gateway does not support binary messages
-			bodyBase64Bytes := []byte{}
-			base64.StdEncoding.Encode(bodyBase64Bytes, bodyBytesCompressed)
-			SendWebsocketMessage(req.ConnectionID, &bodyBase64Bytes)
+			SendWebsocketMessage(req.ConnectionID, &base94message)
 		} else {
 			panic("No se pudo enviar el mensaje (Sin ConnID ni Conn)")
 		}

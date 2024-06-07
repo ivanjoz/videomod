@@ -1371,7 +1371,7 @@ func ConcatInt64(num1, num2 int64) int64 {
 }
 
 // Base94 encoding takes 9 input bytes of 8 bits each, uses those to construct a 72-bit integer, and then converts that to an 11-digit base-94 number, and encodes that number using the ASCII characters ! (33) through ~ (126):
-func Base94Encode(data []byte) string {
+func Base94EncodeBytes(data []byte) []byte {
 	var encodeChunk = func(chunk []byte) string {
 		// Convert the 9-byte chunk to a 72-bit integer
 		var value big.Int
@@ -1414,7 +1414,12 @@ func Base94Encode(data []byte) string {
 		encoded.WriteString(encodeChunk(padded))
 	}
 
-	return fmt.Sprint(padding) + encoded.String()
+	paddingChar := fmt.Sprint(padding)
+	return append([]byte(paddingChar), encoded.Bytes()...)
+}
+
+func Base94Encode(data []byte) string {
+	return string(Base94EncodeBytes(data))
 }
 
 func Base94Decode(encoded string) ([]byte, error) {
