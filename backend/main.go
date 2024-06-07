@@ -48,22 +48,25 @@ func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*e
 	response := core.MainResponse{}
 	// Revisa si es websocket
 	if core.Contains(wssEvents, args.EventType) {
+		fmt.Println("Parseando websocket:: ", args.ConnectionID)
 		awsArgs := ParseWssMessage([]byte(request.Body))
 		args.Body = awsArgs.Body
 		args.Route = awsArgs.Route
 		args.ClientID = awsArgs.ClientID
+		fmt.Println("Determinando ruta:: ", args.Route)
 	} else {
+		fmt.Println("Es HTTP request::")
 		if len(args.Route) == 0 {
 			args.Route = request.RawPath
 		}
 		if len(args.Route) == 0 {
-			core.Log("No path given, but AWS routed this request anyways.")
+			fmt.Println("No path given, but AWS routed this request anyways.")
 			args.Route = "MISSING"
 		}
 	}
 
 	response = mainHandler(args)
-	core.Log("Retornano StatusCode: ", response.LambdaResponse.StatusCode, "|", response.LambdaResponse.IsBase64Encoded, "|", response.LambdaResponse.Body)
+	fmt.Println("Retornano StatusCode: ", response.LambdaResponse.StatusCode, "|", response.LambdaResponse.IsBase64Encoded, "|", response.LambdaResponse.Body)
 
 	return &events.APIGatewayProxyResponse{
 		StatusCode:      response.LambdaResponse.StatusCode,

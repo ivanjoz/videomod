@@ -25,7 +25,7 @@ func Log(args ...any) {
 
 	logMsg := strings.ToLower(Concats(args...))
 
-	doLog := Env.LOGS_FULL || Env.IS_LOCAL
+	doLog := true // Env.LOGS_FULL || Env.IS_LOCAL
 	if !Env.IS_LOCAL {
 		if len(logMsg) > 1 && logMsg[0:1] == "*" {
 			doLog = true

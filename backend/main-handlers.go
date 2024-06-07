@@ -99,7 +99,7 @@ func mainHandler(args core.HandlerArgs) core.MainResponse {
 	}
 
 	appHandlers := *makeAppHandlers()
-
+	core.Log("Estamos aquii!!")
 	// Revisa si es una query con varios handlers dentro de una
 	if len(handlerResponse.Error) == 0 && len(mergedRoutes) > 0 {
 		core.Log("Es un handler merged:", args.Query)

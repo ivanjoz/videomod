@@ -79,7 +79,7 @@ func main() {
 
 	if w1 == "1" {
 		CompileBackendToS3(params, true)
-		DeployLambda(params)
+		DeployLambda(params, true)
 	} else if w1 == "2" {
 		UpdateEnviromentVariables(params)
 	} else if w1 == "3" {
@@ -129,28 +129,34 @@ func CompileBackendToS3(params DeployParams, sendToS3 bool) {
 }
 
 // Despliega el código compilado de la Lambda
-func DeployLambda(params DeployParams) {
+func DeployLambda(params DeployParams, useS3 bool) {
 
 	lambdaName := params.STACK_NAME + "-backend"
-	zipFile, err := ReadFile(GetBaseWD() + compilePath + ".zip")
-
-	if err != nil {
-		panic("Error al leer el compilado.zip: " + err.Error())
-	}
-
-	fmt.Println("Enviando .zip con el compilado del backend...")
-	zipLen := int(float64(len(zipFile)) / 1024)
-	fmt.Printf("Tamaño del compilado: %v kb\n", zipLen)
-
 	deployInput := lambda.UpdateFunctionCodeInput{
 		FunctionName: &lambdaName,
-		ZipFile:      zipFile,
+	}
+
+	if useS3 {
+		deployInput.S3Bucket = &params.DEPLOYMENT_BUCKET
+		cp := S3_COMPILED_PATH
+		deployInput.S3Key = &cp
+	} else {
+		zipFile, err := ReadFile(GetBaseWD() + compilePath + ".zip")
+		if err != nil {
+			panic("Error al leer el compilado.zip: " + err.Error())
+		}
+		deployInput.ZipFile = zipFile
+
+		fmt.Println("Enviando .zip con el compilado del backend...")
+		zipLen := int(float64(len(zipFile)) / 1024)
+		fmt.Printf("Tamaño del compilado: %v kb\n", zipLen)
 	}
 
 	awsConfig, _ := MakeAwsConfig(params.AWS_PROFILE, params.AWS_REGION)
 	client := lambda.NewFromConfig(awsConfig)
 
-	_, err = client.UpdateFunctionCode(context.TODO(), &deployInput)
+	fmt.Printf("Actualizando la función Lambda...\n")
+	_, err := client.UpdateFunctionCode(context.TODO(), &deployInput)
 
 	if err != nil {
 		panic("Error al actualizar el código de la Lambda: " + err.Error())
