@@ -349,15 +349,13 @@ func (e DynamoTableRecords[T]) QueryBatch(querys []DynamoQueryParam) ([]T, error
 
 			output, err := client.Query(context.TODO(), &queryInput)
 			if err != nil {
-				core.Log("Error al ejecutar la DynamoDB")
-				panic(err)
+				return nil, core.Err("Error al ejecutar la query:", err)
 			}
 
 			items := []DynamoDBItem{}
 			err = attributevalue.UnmarshalListOfMaps(output.Items, &items)
 			if err != nil {
-				core.Log("Error al deserializar Dynamodb: " + err.Error())
-				return nil, err
+				return nil, core.Err("Error al deserializar DynamoDB:", err)
 			}
 
 			for _, dynamoItem := range items {

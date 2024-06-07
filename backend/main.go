@@ -48,6 +48,9 @@ func LambdaHandler(_ context.Context, request *core.APIGatewayV2HTTPRequest) (*e
 	response := core.MainResponse{}
 	// Revisa si es websocket
 	if core.Contains(wssEvents, args.EventType) {
+		if args.EventType != "MESSAGE" {
+			return &events.APIGatewayProxyResponse{StatusCode: 200, Body: "OK"}, nil
+		}
 		fmt.Println("Parseando websocket:: ", args.ConnectionID)
 		awsArgs := ParseWssMessage([]byte(request.Body))
 		args.Body = awsArgs.Body
@@ -158,18 +161,6 @@ func ParseWssMessage(messageRaw []byte) core.HandlerArgs {
 		Body:     &message.Body,
 		Route:    message.Accion,
 		ClientID: message.ClientID,
-	}
-}
-
-// Handler principal (para lambda y para local)
-func WssHandler(args core.HandlerArgs) core.MainResponse {
-
-	fmt.Println("Respondiendo status 200 Connected")
-	return core.MainResponse{
-		LambdaResponse: &events.APIGatewayV2HTTPResponse{
-			StatusCode: 200,
-			Body:       "Connected",
-		},
 	}
 }
 

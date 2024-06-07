@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
+	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/gorilla/websocket"
 )
 
@@ -56,13 +58,21 @@ func PrintMemUsage() {
 
 var apiClient *apigatewaymanagementapi.Client
 
+type endpointResolverV2 struct{}
+
+func (r endpointResolverV2) ResolveEndpoint(ctx context.Context, params apigatewaymanagementapi.EndpointParameters) (smithyendpoints.Endpoint, error) {
+	uri, _ := url.Parse("https://pv5s7gfoge.execute-api.us-east-1.amazonaws.com/p/")
+	return smithyendpoints.Endpoint{URI: *uri}, nil
+}
+
 func MakeAPIGatewayClient() *apigatewaymanagementapi.Client {
 	if apiClient == nil {
 		awsCfg := GetAwsConfig()
 
 		options := apigatewaymanagementapi.Options{
-			Credentials: awsCfg.Credentials,
-			Region:      awsCfg.Region,
+			Credentials:        awsCfg.Credentials,
+			Region:             awsCfg.Region,
+			EndpointResolverV2: endpointResolverV2{},
 		}
 
 		apiClient = apigatewaymanagementapi.New(options)
