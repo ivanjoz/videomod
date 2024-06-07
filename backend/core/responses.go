@@ -267,7 +267,10 @@ func MakeResponseFinal(handlerResponse *HandlerResponse) *events.APIGatewayV2HTT
 		return response
 	}
 
-	body := *handlerResponse.Body
+	body := ""
+	if handlerResponse.Body != nil {
+		body = *handlerResponse.Body
+	}
 	handlerResponse.Body = nil
 
 	isMaxLen := len(body) > 5*1000*1000

@@ -186,6 +186,10 @@ func GetFunctionName(i interface{}) string {
 
 func prepareResponse(args core.HandlerArgs, handlerResponse *core.HandlerResponse) core.MainResponse {
 	response := core.MainResponse{}
+	if handlerResponse.Headers == nil {
+		handlerResponse.Headers = map[string]string{}
+	}
+
 	if core.Env.IS_LOCAL {
 		core.SendLocalResponse(args, *handlerResponse)
 	} else {
