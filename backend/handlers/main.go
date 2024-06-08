@@ -5,5 +5,5 @@ import "app/core"
 var ModuleHandlers = core.AppRouterType{
 	"PostRtcOffer":        PostRtcOffer,
 	"AskRTCConnection":    AskRTCConnection,
-	"AnswerRTCConnection": AskRTCConnection,
+	"AnswerRTCConnection": AnswerRTCConnection,
 }

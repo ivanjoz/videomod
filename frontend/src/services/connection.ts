@@ -1,6 +1,7 @@
 "use client";
 import Dexie from 'dexie'
 import { createSignal } from 'solid-js'
+import { IChatMessage } from '~/components/chat';
 
 let dexieInitPromise: Promise<void>
 let dexiedb: Dexie
@@ -50,11 +51,48 @@ const getIpFromCandidate = (offer: string) => {
   return IP
 }
 
-export const [iceConnectionState, setIceConnectionState] = createSignal("Pending")
-export const [recivedMessages, setRecivedMessages] = createSignal([])
-export const [connectionState, setConnectionState] = createSignal("Pending")
+export interface IConnStatus { 
+  isLoading?: boolean, status?: string, iceStatus?: string, msg?: string, error?: string 
+}
+
+export interface IClient {
+  id: string
+  connID: string
+  messages: IChatMessage[]
+  error?: string
+  connStatus?: IConnStatus
+  _updated?: number
+  _updater?: () => void
+}
+
+export const [clientsMap, setClientsMap] = createSignal<Map<string,IClient>>(new Map())
+export const [clientSelectedID, setClientSelectedID] = createSignal<string>()
+export const [clientSelectedStatus, setClientSelectedStatus] = createSignal<IConnStatus>()
 
 interface WsResponse { accion: string, body: any }
+
+const setClientStatus = (id: string, msg: string, error?: string, 
+  conn?: RTCPeerConnection) => {
+  if(!id){ return }
+  const client = clientsMap().get(id)
+  if(!client.connStatus){ client.connStatus = {} }
+  client.connStatus.msg = client.connStatus.msg || msg
+  client.connStatus.isLoading = true
+  client.connStatus.error = client.connStatus.error || error
+  if(conn){
+    client.connStatus.iceStatus = conn.iceConnectionState
+    client.connStatus.status = conn.connectionState
+  }
+  const connState = (client.connStatus.status||"").toLowerCase()
+  if(connState === "connected" || connState === "disconnected"){ 
+    client.connStatus.isLoading = false
+    client.connStatus.msg = ""
+  }
+  if(clientSelectedID() === id){
+    setClientSelectedStatus({... client.connStatus})
+  }
+  if(client._updater){ client._updater() }
+}
 
 export class RTCManager {
 
@@ -62,24 +100,30 @@ export class RTCManager {
   connection: RTCPeerConnection
   channel: RTCDataChannel
   promiseOngoing: Promise<string>
+  clientID: string
 
-  constructor(isOffer?: boolean){
+  constructor(isOffer?: boolean, clientID?: string){
+    this.clientID = clientID || ""
+
     this.connection = new RTCPeerConnection({ 
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] 
     })
 
     this.connection.onconnectionstatechange = (event) => {
-      console.log("connectionstatechange", event)
-      setConnectionState(this.connection.connectionState)
+      // console.log("connectionstatechange", event)
+      setClientStatus(this.clientID, "","",this.connection)
     }
   
     this.connection.oniceconnectionstatechange = (event) => {
-      console.log("oniceconnectionstatechange", event)
-      setIceConnectionState(this.connection.iceConnectionState)
+      // console.log("oniceconnectionstatechange", event)
+      setClientStatus(this.clientID, "","",this.connection)
     }
 
     let iceCandidateResolve: (offerString: string) => void
-    this.promiseOngoing = new Promise(r => { iceCandidateResolve = r })
+
+    if(isOffer){
+      this.promiseOngoing = new Promise(r => { iceCandidateResolve = r })
+    }
     
     this.connection.onicecandidate = () => {
       if(this.connection.localDescription.type == 'offer'){
@@ -90,7 +134,7 @@ export class RTCManager {
         }
         // The offer with the correct public IP is ready here (previuos offers are generated with private IP)
         this.offerString = JSON.stringify(this.connection.localDescription)
-        console.log("resolviendo offer string::", this.offerString)
+        console.log("resolviendo offer string...")
         iceCandidateResolve(this.offerString)
         this.promiseOngoing = null
       }
@@ -123,13 +167,19 @@ export class RTCManager {
   }
 
   async acceptOfferRequest(remoteOffer: string): Promise<string> {
+    if(this.promiseOngoing){ await this.promiseOngoing }
+    console.log("Aceptarndo Remote Offer...")
     await this.connection.setRemoteDescription(JSON.parse(remoteOffer))
-    console.log("Waiting for answer...")
+    console.log("Generando Answer...")
+    setClientStatus(this.clientID, "4. Creating RTC Answer...","",this.connection)
     let iceAnswer = ""
     const promise = new Promise<string>(r => {
       this.connection.onicecandidate = () => {
         if(this.connection.localDescription.type == 'answer'){
           iceAnswer = JSON.stringify(this.connection.localDescription)
+          // console.log("iceAnswer::",iceAnswer)
+          console.log("Answer Generada!!")
+          setClientStatus(this.clientID, "5. RTC answer created, sending...","",this.connection)
           r(iceAnswer)
         }
       }
@@ -140,15 +190,20 @@ export class RTCManager {
   }
 
   async acceptRemoteAnswer(remoteAnswer: string){
+    console.log("Conexion Status::",this.connection.connectionState,"|",this.connection.iceConnectionState)
+    setClientStatus(this.clientID, "6. Acepting RTC remote answer...","",this.connection)
+
     if(!remoteAnswer){ return }
     try {
       await this.connection.setRemoteDescription(JSON.parse(remoteAnswer)) 
-      localStorage.setItem("savedRemoteAnswer", remoteAnswer)
     } catch (error) {
       console.error(error)
-      console.error('Remote Answer no pudo ser parseada', remoteAnswer)
+      setClientStatus(this.clientID, `Failed to set remote answer:: ${error}`)
+      return
     }
+    console.log("Conexion Status::",this.connection.connectionState,"|",this.connection.iceConnectionState)
     console.log("Conexión establecida mediante Remote Answer!!")
+    setClientStatus(this.clientID,"","",this.connection)
   }
   
   onMessage(event: MessageEvent){
@@ -209,14 +264,14 @@ export class ConnectionManager {
         if(response.accion === "AskRTCConnection" && response.body){
           this.handleRTCConnectionRequest(response.body)
         } else if(response.accion === "AnswerRTCConnection" && response.body){
-          this.handleRTCConnectionRequest(response.body)
-        }
-
-        const callback = this.suscriptions.get(response.accion)
-        if(callback){
-          callback(response.body)
+          this.handleRTCConnectionAnswer(response.body)
         } else {
-          if(this.onMessage){ this.onMessage(response) }
+          const callback = this.suscriptions.get(response.accion)
+          if(callback){
+            callback(response.body)
+          } else {
+            if(this.onMessage){ this.onMessage(response) }
+          }
         }
       }
     }
@@ -249,27 +304,41 @@ export class ConnectionManager {
     this.worker.port.postMessage(['sendMessage', message])
   }
 
-  getRtcManager(ClientID: string, reload?: boolean){
-    if(!this.userRTCConnectionMap.has(ClientID)){
-      this.userRTCConnectionMap.set(ClientID, new RTCManager(true))
+  getRtcManager(ClientID: string, isOffer?: boolean, recreate?: boolean){
+    if(!this.userRTCConnectionMap.has(ClientID) || recreate){
+      console.log("Creando nuevo RTCManager para::", ClientID)
+      this.userRTCConnectionMap.set(ClientID, new RTCManager(isOffer, ClientID))
     }
     return this.userRTCConnectionMap.get(ClientID)
   }
 
   async sendOffer(){
+    console.log("Waiting for offer...")
     const offerString = await this.rtcManager.getOffer()
     const message = { offer: offerString }
+    console.log("Sending offer...")
     await this.sendMessage("PostRtcOffer", JSON.stringify(message))
   }
 
   // Paso 1: Enviar Offer hacia ClientAskID
   async askConnection(ClientAskID: string, ConnID: string){
     console.log("Generando RTC Offer...", ClientAskID)
-    const rtcManager = this.getRtcManager(ClientAskID)
+    setClientStatus(ClientAskID, "1. Generating RTC Offer...")
+    let rtcManager = this.getRtcManager(ClientAskID, true)
+    const connState = rtcManager.connection?.connectionState?.toLocaleLowerCase() || ""
+    if(connState === 'connected' || connState === 'connecting'){
+      console.log("RTC Connection already established!!")
+      return
+    } else if (rtcManager.connection.connectionState !== 'new'){
+      rtcManager = this.getRtcManager(ClientAskID, true, true)
+    }
+
     const rtcOffer = await rtcManager.getOffer()
     console.log("rtc offer generado:: ", rtcOffer)
     const connRequest = { ClientAskID, ConnID, Offer: rtcOffer }
+    setClientStatus(ClientAskID, "2. Asking RTC Peer Connection...")
     await this.sendMessage("AskRTCConnection", JSON.stringify(connRequest))
+    setClientStatus(ClientAskID, "3. Waiting RTC Peer Answer...")
   }
 
   // Paso 2: Recibir Offer y enviar Answer hacia ClientFromID
@@ -278,9 +347,13 @@ export class ConnectionManager {
       console.warn("No ClientFromID in request::", req)
       return
     }
+    setClientStatus(req.ClientFromID, "4. Creating RTC connection...")
     const rtcManager = this.getRtcManager(req.ClientFromID)
+    console.log("Acepting RTC Offer...")
     req.Answer = await rtcManager.acceptOfferRequest(req.Offer)
     req.Offer = ""
+    console.log("Enviando respuesta a RTC Offer::", req.Answer)
+    setClientStatus(req.ClientFromID, "5. Sending back RTC answer...")
     this.sendMessage("AnswerRTCConnection", JSON.stringify(req))
   }
 
@@ -290,8 +363,8 @@ export class ConnectionManager {
       console.warn("No ClientFromID in request::", req)
       return
     }
-    const rtcManager = this.getRtcManager(req.ClientFromID)
-    console.log("Aceptando remote answer y estableciendo conexión::",req.Answer)
+    const rtcManager = this.getRtcManager(req.ClientAskID)
+    console.log("Aceptando remote answer y estableciendo conexión...")
     await rtcManager.acceptRemoteAnswer(req.Answer)
   }
 }

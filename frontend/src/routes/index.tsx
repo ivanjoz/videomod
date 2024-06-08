@@ -1,36 +1,42 @@
 "use client";
-import { For, Show, createEffect, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
 import "video.js/dist/video-js.min.css";
-import { connectionManager } from "~/services/connection";
+import { IClient, IConnStatus, clientSelectedID, clientSelectedStatus, clientsMap, connectionManager, setClientSelectedID, setClientSelectedStatus, setClientsMap } from "~/services/connection";
 import s1 from '../styles/components.module.css';
 import { LoadingBar } from "~/components/layout";
-
-interface IUserSelected {
-  userID: string
-  connID: string
-  connStatus: number
-  messages: string[]
-  error?: string
-}
+import { ChatContainer } from "~/components/chat";
 
 export default function Home() {
 
-  const [localDescription, setLocalDescription] = createSignal("")
-  const [createdAnswer, setCreatedAnswer] = createSignal("----------")
   const [loadingClients, setLoadingClients] = createSignal(true)
-  const [clients, setClients] = createSignal([])
-  const [userSelected, setUserSelected] = createSignal<IUserSelected>()
+
+  const clientSelected = createMemo(() => {
+    return clientsMap().get(clientSelectedID())
+  })
+
+  createEffect(on(clientSelectedID, (id) => {
+    if(!id){ setClientSelectedStatus(); return }
+    const client = clientsMap().get(id)
+    client.connStatus = client.connStatus || { msg: "" } as IConnStatus
+    setClientSelectedStatus(client.connStatus)
+  }))
+
+  const clientsList = createMemo(() => {
+    let clientsAll = Array.from(clientsMap().values())
+    clientsAll = clientsAll.sort((a,b) => b._updated - a._updated)
+    return clientsAll
+  })
 
   if(typeof window === 'undefined'){ return <div>!</div> }
 
   connectionManager.on('PostRtcOffer', users => {
-    const usersFiltered = []
+    const clientsMap = new Map()
     for(let user of users){
       if(user.id === connectionManager.clientID){ continue }
       user._updated = parseInt(user.updated,36) * 2
-      usersFiltered.push(user)
+      clientsMap.set(user.id, user)
     }
-    setClients(usersFiltered)
+    setClientsMap(clientsMap)
     console.log('Usuarios conectados::', users)
     setLoadingClients(false)
   })
@@ -43,8 +49,6 @@ export default function Home() {
     }
   },[])
 
-  const nowTime = Math.floor(Date.now()/1000)
-
   return <div>
     <h3>WebRTC Open Chat Room</h3>
     <div class="w100 flex jc-between">
@@ -54,30 +58,67 @@ export default function Home() {
           <LoadingBar msg="Cargando Usuarios..." />
         </Show>
         <Show when={!loadingClients()}>
-          <For each={clients()}>
+          <For each={clientsList()}>
             {client => {
-              const haceMin = Math.ceil((nowTime - client._updated)/60)
-
-              return <div class={"px-06 py-06 mt-08 " + s1.card_c1} onClick={ev => {
-                ev.stopPropagation()
-                connectionManager.askConnection(client.id, "")
-                setUserSelected(client)
-              }}>
-                <div class="w100 flex jc-between">
-                  <div>{client.id}</div>
-                  <div>Hace {haceMin} min</div>
-                </div>
-              </div>
+              return <ClientCard client={client} />
             }}
           </For>
         </Show>
       </div>
-      <div class="px-12 py-12 grow-1">
+      <div class={"px-12 py-12 grow-1 " + (s1.card_chat_c)}>
         <div class="h3">Chat</div>
-        <Show when={userSelected() && !userSelected().connStatus}>
-          <LoadingBar msg="Conectando con usuario..." />
+        <ChatContainer client={clientSelected() || clientsList()[0]}/>
+        <Show when={clientSelectedStatus()?.isLoading}>
+          <LoadingBar msg={clientSelectedStatus()?.msg} />
         </Show>
+
       </div>
     </div>
   </div>
+}
+
+interface IClientCard {
+  client: IClient
+}
+
+const ClientCard = (props: IClientCard) => {
+
+  const [status, setStatus] = createSignal(props.client.connStatus||{})
+
+  props.client._updater = () => {
+    setStatus({...(props.client.connStatus||{})})
+  }
+
+  const nowTime = Math.floor(Date.now()/1000)
+  const haceMin = Math.ceil((nowTime - props.client._updated)/60)
+
+  return <div class={"px-06 py-06 mt-08 " + s1.card_c1} onClick={ev => {
+    ev.stopPropagation()
+    setClientSelectedID(props.client.id)
+    connectionManager.askConnection(props.client.id, "")
+  }}>
+    <div class="w100 flex jc-between">
+      <div>{props.client.id}</div>
+      <div>Hace {haceMin} min</div>
+    </div>
+    <div class="w100 flex jc-between">
+      <div>
+        { status().status &&
+          <div>{status().status} | {status().iceStatus}</div>
+        }
+        { !status().status &&
+          <div>?</div>
+        }
+      </div>
+      <div>
+        { status().msg &&
+          <div>{status().msg}</div>
+        }
+        { !status().msg &&
+          <div>-</div>
+        }
+      </div>
+    </div>
+  </div>
+
 }
