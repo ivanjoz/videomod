@@ -19,7 +19,7 @@ if [[ $ACCIONES == *"1"* ]]; then
     echo "=== BUILDING FRONTEND ==="
 
     npm run build --prefix ./frontend
-    node build.js
+    node build.mjs
 
     echo "Frontend build finished!"
 

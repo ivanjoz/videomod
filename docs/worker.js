@@ -2,8 +2,20 @@ setInterval(() => {
   console.log('worker.js is running');
 },1000)
 
-const ws = new WebSocket('ws://127.0.0.1:3589/ws')
-console.log('websocket::',ws)
+console.log(self.location)
+
+const getWssAPI = () => {
+  console.log(self.location.hostname === "0.0.0.0", !self.location.port)
+  if(self.location.hostname === "0.0.0.0" || !self.location.port){
+    console.log("retornando wss://pv5s7gfoge.execute-api.us-east-1.amazonaws.com/p/")
+    return "wss://pv5s7gfoge.execute-api.us-east-1.amazonaws.com/p/"
+  } else {
+    console.log("retornando ws://127...")
+    return "ws://127.0.0.1:3589/ws"
+  }
+}
+
+const ws = new WebSocket(getWssAPI())
 
 onmessage = function(e) {
 
