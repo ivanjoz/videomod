@@ -270,7 +270,7 @@ func UpdateEnviromentVariables(params DeployParams) {
 	jsonBase64 := BytesToBase64(CompressZstd(&jsonString), true)
 
 	variables := map[string]string{
-		"APP_CODE": "gerp_prd", "CONFIG": jsonBase64,
+		"APP_CODE": "videmod_prd", "CONFIG": jsonBase64,
 	}
 
 	configInput := lambda.UpdateFunctionConfigurationInput{

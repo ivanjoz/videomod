@@ -43,10 +43,11 @@ type HandlerArgs struct {
 	Usuario        IUsuario
 	EventType      string
 	// websocket
-	IsWebSocket   bool
-	ClientID      string
-	ConnectionID  string
-	WebSocketConn *websocket.Conn
+	IsWebSocket    bool
+	ClientID       string
+	ConnectionID   string
+	ResponseConnID string
+	WebSocketConn  *websocket.Conn
 }
 
 func PrintMemUsage() {
@@ -629,9 +630,12 @@ type WebsocketResponse struct {
 }
 
 // Crea una respuesta serializando un struct
-func (req *HandlerArgs) MakeResponse(respStruct any, connID_ ...string,
-) HandlerResponse {
+func (req *HandlerArgs) MakeResponse(respStruct any) HandlerResponse {
 	if req.IsWebSocket {
+		if req.ResponseConnID == "" {
+			return HandlerResponse{}
+		}
+
 		response := WebsocketResponse{
 			Accion: req.Route,
 			Body:   respStruct,
@@ -656,21 +660,12 @@ func (req *HandlerArgs) MakeResponse(respStruct any, connID_ ...string,
 		Log("Body bytes a enviar::", len(base94message))
 
 		if req.WebSocketConn != nil {
-			conn := req.WebSocketConn
-			// Revisa si se va a enviar un mensaje a otra conexión
-			if len(connID_) > 0 {
-				Log("Enviando mensaje a Client-ID:", connID_)
-				conn = ConnectionMapper[connID_[0]]
-			}
+			conn := ConnectionMapper[req.ResponseConnID]
 			if conn != nil {
 				conn.WriteMessage(websocket.TextMessage, base94message)
 			}
 		} else if len(req.ConnectionID) > 0 {
-			connID := req.ConnectionID
-			if len(connID_) > 0 {
-				connID = connID_[0]
-			}
-			SendWebsocketMessage(connID, &base94message)
+			SendWebsocketMessage(req.ResponseConnID, &base94message)
 		} else {
 			panic("No se pudo enviar el mensaje (Sin ConnID ni Conn)")
 		}

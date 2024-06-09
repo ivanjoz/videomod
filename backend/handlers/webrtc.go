@@ -7,34 +7,8 @@ import (
 	"time"
 )
 
-type RtcClientOffer struct {
-	Offer        string `json:"offer"`
-	Name         string `json:"name"`
-	ClientID     string `json:"id"`
-	ConnectionID string `json:"connID"`
-	Updated      string `json:"updated"` // unix time / 2 in base36
-}
-
-func MakeClientTable() aws.DynamoTableRecords[RtcClientOffer] {
-	return aws.DynamoTableRecords[RtcClientOffer]{
-		TableName:      core.Env.DYNAMO_TABLE,
-		PK:             "client",
-		UseCompression: true,
-		GetIndexKeys: func(e RtcClientOffer, idx uint8) string {
-			switch idx {
-			case 0: // SK (Sort Key)
-				return core.Concatn(e.ClientID)
-			case 1: // ix1
-				return core.Concatn(e.Updated)
-			}
-			return ""
-		},
-	}
-}
-
 func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
-	// core.Log("Body recibido::", *args.Body)
-	offer := RtcClientOffer{}
+	offer := aws.RtcClientOffer{}
 	offer.Updated = core.ToBase36(time.Now().Unix() / 2)
 
 	err := json.Unmarshal([]byte(*args.Body), &offer)
@@ -49,7 +23,8 @@ func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
 	}
 
 	offer.ClientID = args.ClientID
-	dynamoTable := MakeClientTable()
+	offer.ConnectionID = args.ConnectionID
+	dynamoTable := aws.MakeClientTable()
 	dynamoTable.PutItem(&offer, 1)
 
 	// Devuelve los ultimos usuarios conectados
@@ -61,7 +36,7 @@ func PostRtcOffer(args *core.HandlerArgs) core.HandlerResponse {
 	}
 
 	core.Log("Número de conexiones obtenidas::", len(records))
-
+	aws.AssingResponseToClient(args, args.ClientID)
 	return args.MakeResponse(records)
 }
 
@@ -90,13 +65,8 @@ func AskRTCConnection(args *core.HandlerArgs) core.HandlerResponse {
 
 	request.ClientFromID = args.ClientID
 	// Si estamos dentro de una Lambda y enviamos por Api-Gateway
-	if args.ConnectionID != "" {
-
-	} else {
-		return args.MakeResponse(request, request.ClientAskID)
-	}
-
-	return core.HandlerResponse{}
+	aws.AssingResponseToClient(args, request.ClientAskID)
+	return args.MakeResponse(request)
 }
 
 func AnswerRTCConnection(args *core.HandlerArgs) core.HandlerResponse {
@@ -113,13 +83,6 @@ func AnswerRTCConnection(args *core.HandlerArgs) core.HandlerResponse {
 		core.Log("No se recibió el ClientID o Answer")
 		return core.HandlerResponse{}
 	}
-
-	// Si estamos dentro de una Lambda y enviamos por Api-Gateway
-	if args.ConnectionID != "" {
-
-	} else {
-		return args.MakeResponse(request, request.ClientFromID)
-	}
-
-	return core.HandlerResponse{}
+	aws.AssingResponseToClient(args, request.ClientFromID)
+	return args.MakeResponse(request)
 }
