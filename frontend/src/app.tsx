@@ -1,10 +1,11 @@
 "use client";
-import { MetaProvider, Title } from "@solidjs/meta";
+import { MetaProvider } from "@solidjs/meta";
 import { Router } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
-import { Suspense } from "solid-js";
 import "@styles/global.css";
-import { testBase94encode } from "./core/halpers";
+import "@styles/layout.css";
+import { Suspense } from "solid-js";
+import { Base64, TimeMToB64Decode, TimeMToB64Encode } from "./core/halpers";
 
 export const GetWssAPI = () => {
   if(typeof window === 'undefined'){

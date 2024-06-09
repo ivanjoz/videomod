@@ -5,7 +5,7 @@ import path from 'path'
 const IS_PRD = process.env.npm_lifecycle_event !== 'dev'
 console.log("IS_PROD:", IS_PRD)
 
-if (import.meta.hot){
+if (import.meta.hot){ 
   import.meta.hot.accept(() => import.meta.hot.invalidate())
 }
 
@@ -13,28 +13,32 @@ export default defineConfig({
   ssr: false, // IS_PRD,
   server: {
     renderer: "false",
-    /*
-    preset: "githubPages",
-    prerender: {
-      routes: ["/"],
-    }
-    */
+    static: true,
+    dev: false,
+    // noExternals: true,
   },  
   devOverlay: false,
   solid: {
     hot: false,
     ssr: false,
-    dev: true,
+    dev: false,
+    solid: {
+      delegateEvents: false,
+      wrapConditionals: false,
+      contextToCustomElements: false,
+      hydratable: false
+    }
   } as Options,
-  vite() {
+  vite() {    
     return { 
+      build: {},
       resolve: {
         alias: {
           "@styles": path.resolve(process.env.PWD as string,'src/styles'),
         }
       },
       server: {
-        hmr: { overlay: false }
+        hmr: false
       },
     }
   }

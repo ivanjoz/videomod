@@ -1,0 +1,27 @@
+.message_card {
+  width: auto;
+  padding: 5px 8px;
+  background-color: #3a3a6c;
+  border-radius: 7px;
+}
+
+.message_card_sended {
+  background-color: #3a3a6c;
+}
+.message_card_received {
+  background-color: #255740;
+}
+
+.chat_textarea {
+  width: 100%;
+  background-color: #2a2a3d;
+  color: white;
+  border-radius: 7px;
+  outline: none;
+  border: 1px dashed #9a9ab8;
+  resize: none;
+}
+.chat_textarea:focus {
+  outline: 1px solid #8d77cfc7;
+  border: 1px solid #8d77cf75;
+}

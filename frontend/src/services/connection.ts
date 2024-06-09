@@ -1,7 +1,8 @@
 "use client";
 import Dexie from 'dexie'
 import { createSignal } from 'solid-js'
-import { IChatMessage } from '~/components/chat';
+import { IChatMessage, setChatMessages } from '~/components/chat';
+import { GetWorker, TimeMToB64Encode } from '~/core/halpers';
 
 let dexieInitPromise: Promise<void>
 let dexiedb: Dexie
@@ -53,6 +54,7 @@ const getIpFromCandidate = (offer: string) => {
 
 export interface IConnStatus { 
   isLoading?: boolean, status?: string, iceStatus?: string, msg?: string, error?: string 
+  newMessages?: number
 }
 
 export interface IClient {
@@ -143,7 +145,7 @@ export class RTCManager {
     this.connection.ondatachannel = (event) => {
       console.log('ondatachannel')
       this.channel = event.channel
-      this.channel.onmessage = ev => this.onMessage(ev)
+      this.channel.onmessage = ev => this.onMessage(ev,1)
     }
   
     this.connection.onnegotiationneeded = async (ev) => {
@@ -152,7 +154,7 @@ export class RTCManager {
 
     this.channel = this.connection.createDataChannel('data')
     this.channel.onopen = event => console.log('onopen', event)
-    this.channel.onmessage = ev => this.onMessage(ev)
+    this.channel.onmessage = ev => this.onMessage(ev,2)
 
     if(isOffer){
       this.connection.createOffer().then((offer) => {
@@ -206,8 +208,39 @@ export class RTCManager {
     setClientStatus(this.clientID,"","",this.connection)
   }
   
-  onMessage(event: MessageEvent){
-    
+  onMessage(event: MessageEvent, channel?: number){
+    if(!channel){ throw new Error("Channel not defined") }
+    let msg = event.data
+    console.log("Mensaje Recibido::", channel, msg)
+    try {
+      msg = JSON.parse(msg) 
+    } catch (error) {
+      console.warn("Mensaje no es un JSON válido::", msg)
+      return
+    }
+    const accion = msg.ac
+    delete msg.ac
+    console.log("accion:: ", accion)
+    if(accion === 1){ // Mensaje de chat
+      msg.ss = 5
+      const client = clientsMap().get(this.clientID)
+      if(!client){
+        console.warn("Client not found::", this.clientID)
+        return
+      }
+      client.messages = client.messages || []
+      client.connStatus.newMessages = client.connStatus.newMessages || 0
+      console.log("cliente actualizado:: ", client)
+      if(!client.messages.some(x => x.id === msg.id)){
+        client.connStatus.newMessages++
+        client.messages.unshift(msg)
+        console.log("actualizando client::", clientSelectedID(), this.clientID)
+        if(clientSelectedID() === this.clientID){
+          setChatMessages([...client.messages])
+        }
+        if(client._updater){ client._updater() }
+      }
+    }
   }
 }
 
@@ -242,10 +275,7 @@ export class ConnectionManager {
     this.rtcManager = new RTCManager(true)
 
     // Shared Wss Worker
-    this.worker = new SharedWorker(new URL('~/worker/worker.ts', import.meta.url), {
-      type: 'module',
-    })
-
+    this.worker = GetWorker()
     this.worker.port.start()
 
     this.worker.port.onmessage = (e) => {
@@ -297,7 +327,7 @@ export class ConnectionManager {
     this.suscriptions.set(accion, callback)
   }
 
-  async sendMessage(accion: string, messageBody: string){
+  async sendWorkerMessage(accion: string, messageBody: string){
     if(this.onOpenPromise){ await this.onOpenPromise }
     console.log('Client-ID a enviar::', this.clientID)
     const message = { a: accion, b: messageBody, c: this.clientID }
@@ -317,7 +347,7 @@ export class ConnectionManager {
     const offerString = await this.rtcManager.getOffer()
     const message = { offer: offerString }
     console.log("Sending offer...")
-    await this.sendMessage("PostRtcOffer", JSON.stringify(message))
+    await this.sendWorkerMessage("PostRtcOffer", JSON.stringify(message))
   }
 
   // Paso 1: Enviar Offer hacia ClientAskID
@@ -337,7 +367,7 @@ export class ConnectionManager {
     console.log("rtc offer generado:: ", rtcOffer)
     const connRequest = { ClientAskID, ConnID, Offer: rtcOffer }
     setClientStatus(ClientAskID, "2. Asking RTC Peer Connection...")
-    await this.sendMessage("AskRTCConnection", JSON.stringify(connRequest))
+    await this.sendWorkerMessage("AskRTCConnection", JSON.stringify(connRequest))
     setClientStatus(ClientAskID, "3. Waiting RTC Peer Answer...")
   }
 
@@ -354,7 +384,7 @@ export class ConnectionManager {
     req.Offer = ""
     console.log("Enviando respuesta a RTC Offer::", req.Answer)
     setClientStatus(req.ClientFromID, "5. Sending back RTC answer...")
-    this.sendMessage("AnswerRTCConnection", JSON.stringify(req))
+    this.sendWorkerMessage("AnswerRTCConnection", JSON.stringify(req))
   }
 
   // Paso 3: Recibir Answer y establecer conexión
@@ -367,12 +397,27 @@ export class ConnectionManager {
     console.log("Aceptando remote answer y estableciendo conexión...")
     await rtcManager.acceptRemoteAnswer(req.Answer)
   }
+
+  async sendRtcMessage(clientID: string, message: any, accion: number){
+    const rtcManager = this.getRtcManager(clientID)
+    const client = clientsMap().get(clientID)
+    client.messages = client.messages || []
+    const messageObject = { id: TimeMToB64Encode(Date.now()), cn: message, ss: 1 }
+    client.messages.unshift(messageObject)
+    if(clientSelectedID() === clientID){
+      setChatMessages([...client.messages])
+    }
+    const messageString = JSON.stringify({...messageObject, ac: accion})
+    rtcManager.channel.send(messageString)
+    const compressed = await compressStringWithGzip(messageString)
+    rtcManager.channel.send(compressed)
+  }
 }
 
 export const connectionManager = new ConnectionManager()
 
 export const Connect = async ()=> {
-  await connectionManager.sendMessage("SendHello","Hello Server")
+  await connectionManager.sendWorkerMessage("SendHello","Hello Server")
   await connectionManager.sendOffer()
 }
 

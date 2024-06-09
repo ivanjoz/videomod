@@ -112,3 +112,62 @@ export const testBase94encode = () => {
   const decodedString = decoder.decode(decoded)
   console.log("decoded:", decodedString)
 }
+
+export const GetWorker = () => {
+  return new SharedWorker(
+    new URL('~/worker/worker.ts?worker', import.meta.url), {
+    type: 'module',
+  })
+}
+
+const _rixits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+_"
+
+export const Base64 = {
+  FromNumber: (number: number) => {
+      if (isNaN(Number(number)) || number === null ||
+          number === Number.POSITIVE_INFINITY)
+          throw "The input is not valid";
+      if (number < 0)
+          throw "Can't represent negative numbers now";
+
+      var rixit; // like 'digit', only in some non-decimal radix 
+      var residual = Math.floor(number);
+      var result = '';
+      while (true) {
+          rixit = residual % 64
+          // console.log("rixit : " + rixit);
+          // console.log("result before : " + result);
+          result = _rixits.charAt(rixit) + result;
+          // console.log("result after : " + result);
+          // console.log("residual before : " + residual);
+          residual = Math.floor(residual / 64);
+          // console.log("residual after : " + residual);
+
+          if (residual == 0)
+              break;
+          }
+      return result;
+  },
+  ToNumber: (rixits: string) => {
+    let result = 0;
+    // console.log("rixits : " + rixits);
+    // console.log("rixits.split('') : " + rixits.split(''));
+    const rixitsArray = rixits.split('');
+    for (let e = 0; e < rixitsArray.length; e++) {
+        // console.log("_Rixits.indexOf(" + rixits[e] + ") : " + 
+            // this._Rixits.indexOf(rixits[e]));
+        // console.log("result before : " + result);
+        result = (result * 64) + _rixits.indexOf(rixitsArray[e]);
+        // console.log("result after : " + result);
+    }
+    return result;
+  }
+}
+
+export const TimeMToB64Encode = (time: number): string => {
+  return Base64.FromNumber(Math.floor((time - 1600000000000)*0.1))
+}
+export const TimeMToB64Decode = (timeB64: string) => {
+  const time = Base64.ToNumber(timeB64)
+  return time *10 + 1600000000000
+}
