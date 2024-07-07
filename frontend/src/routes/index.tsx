@@ -8,6 +8,44 @@ import { ChatContainer, setChatMessages } from "~/components/chat";
 
 export default function Home() {
 
+          // List of common video and audio codecs to check
+          const videoCodecs = [
+            'video/webm; codecs="vp8"',
+            'video/webm; codecs="vp9"',
+            'video/webm; codecs="av01"',
+            'video/mp4; codecs="avc1.42E01E"',
+            'video/mp4; codecs="avc1.4D401E"',
+            'video/mp4; codecs="avc1.64001E"',
+            'video/mp4; codecs="hev1.1.6.L93.B0"',
+            'video/mp4; codecs="hvc1.1.6.L93.B0"'
+        ];
+
+        const audioCodecs = [
+            'audio/webm; codecs="opus"',
+            'audio/webm; codecs="vorbis"',
+            'audio/mp4; codecs="mp4a.40.2"',
+            'audio/aac'
+        ];
+
+        console.log('Supported Video Codecs:');
+        videoCodecs.forEach(codec => {
+            if (MediaSource.isTypeSupported(codec)) {
+                console.log(codec, 'is supported');
+            } else {
+                console.log(codec, 'is NOT supported');
+            }
+        });
+
+        console.log('Supported Audio Codecs:');
+        audioCodecs.forEach(codec => {
+            if (MediaSource.isTypeSupported(codec)) {
+                console.log(codec, 'is supported');
+            } else {
+                console.log(codec, 'is NOT supported');
+            }
+        });
+        
+
   const [loadingClients, setLoadingClients] = createSignal(true)
 
   const clientSelected = createMemo(() => {
@@ -89,6 +127,14 @@ const ClientCard = (props: IClientCard) => {
     setStatus({...(props.client.connStatus||{})})
   }
 
+  const statusMessage = createMemo(() => {
+    let message = status().status
+    if(message !== status().iceStatus){
+      message += " | " + status().iceStatus
+    }
+    return message
+  })
+
   const nowTime = Math.floor(Date.now()/1000)
   const haceMin = Math.ceil((nowTime - props.client._updated)/60)
 
@@ -106,11 +152,8 @@ const ClientCard = (props: IClientCard) => {
     </div>
     <div class="w100 flex jc-between">
       <div>
-        { status().status &&
-          <div>{status().status} | {status().iceStatus}</div>
-        }
-        { !status().status &&
-          <div>?</div>
+        { statusMessage() &&
+          <div>{statusMessage()}</div>
         }
       </div>
       <div class="flex a-center">

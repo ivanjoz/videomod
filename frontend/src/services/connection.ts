@@ -7,7 +7,7 @@ import { GetWorker, TimeMToB64Encode } from '~/core/halpers';
 let dexieInitPromise: Promise<void>
 let dexiedb: Dexie
 
-const getDexieInstance = async (): Promise<Dexie> => {
+export const getDexieInstance = async (): Promise<Dexie> => {
   if(dexieInitPromise){
     await dexieInitPromise
   }
@@ -15,7 +15,8 @@ const getDexieInstance = async (): Promise<Dexie> => {
 
   dexiedb = new Dexie('videomod')
   dexiedb.version(1).stores({
-    config: 'key'
+    config: 'key',
+    messages: '[cid+id],cid',
   })
 
   console.log("creando db dexie::", dexiedb)
@@ -50,6 +51,20 @@ const getIpFromCandidate = (offer: string) => {
   const ix2 = offer.indexOf('\\r',ix1+10)
   const IP  = offer.substring(ix1+10,ix2).trim()
   return IP
+}
+
+const addHeaderToUint8Array = (uint8Value: number, array: Uint8Array): Uint8Array => {
+  const newArray = new Uint8Array(array.length + 1)
+  newArray.set([uint8Value],0)
+  newArray.set(array,1)
+  return newArray
+}
+
+const extractHeaderFromUint8Array = (array: Uint8Array): [number,Uint8Array] => {
+  const header = array[0]
+  const newArray = new Uint8Array(array.length - 1)
+  newArray.set(array.slice(1),0)
+  return [header,newArray]
 }
 
 export interface IConnStatus { 
@@ -96,6 +111,8 @@ const setClientStatus = (id: string, msg: string, error?: string,
   if(client._updater){ client._updater() }
 }
 
+export const mimeCodec = 'video/webm; codecs="vp9,opus"'
+
 export class RTCManager {
 
   offerString: string
@@ -103,13 +120,22 @@ export class RTCManager {
   channel: RTCDataChannel
   promiseOngoing: Promise<string>
   clientID: string
+  onVideoChunk: (chunk: Uint8Array, header: number) => void
+  onIncommingMediaStream: (mediaStream: MediaStream) => void
+  
+  // Conection for video streaming
+  streamConnection: RTCPeerConnection
+  streamIncommingConn: RTCPeerConnection
+  streamIncomming: MediaStream
+
+  rtcConfig: { 
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] 
+  }
 
   constructor(isOffer?: boolean, clientID?: string){
     this.clientID = clientID || ""
 
-    this.connection = new RTCPeerConnection({ 
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] 
-    })
+    this.connection = new RTCPeerConnection(this.rtcConfig)
 
     this.connection.onconnectionstatechange = (event) => {
       // console.log("connectionstatechange", event)
@@ -126,6 +152,8 @@ export class RTCManager {
     if(isOffer){
       this.promiseOngoing = new Promise(r => { iceCandidateResolve = r })
     }
+
+    console.log("instanciando RTC Manager::",isOffer, clientID)
     
     this.connection.onicecandidate = () => {
       if(this.connection.localDescription.type == 'offer'){
@@ -136,7 +164,7 @@ export class RTCManager {
         }
         // The offer with the correct public IP is ready here (previuos offers are generated with private IP)
         this.offerString = JSON.stringify(this.connection.localDescription)
-        console.log("resolviendo offer string...")
+        console.log("resolviendo offer string:: ",this.offerString)
         iceCandidateResolve(this.offerString)
         this.promiseOngoing = null
       }
@@ -165,7 +193,9 @@ export class RTCManager {
   }
   
   async getOffer(){
-    return this.promiseOngoing ? await this.promiseOngoing : this.offerString
+    if(this.promiseOngoing){ await this.promiseOngoing }
+    console.log("devolviendo offer::", this.offerString)
+    return this.offerString
   }
 
   async acceptOfferRequest(remoteOffer: string): Promise<string> {
@@ -207,11 +237,67 @@ export class RTCManager {
     console.log("Conexión establecida mediante Remote Answer!!")
     setClientStatus(this.clientID,"","",this.connection)
   }
+
+  async sendJson(message: any){
+    if(typeof message !== "string"){ message = JSON.stringify(message) }
+    const compressed = await compressStringWithGzip(message)
+    this.channel.send(addHeaderToUint8Array(1,compressed))
+  }
+
+  async sendBinary(type: number, message: Uint8Array){
+    this.channel.send(addHeaderToUint8Array(type,message))
+  }
+
+  async sendStreamRequest(mediaStream: MediaStream){
+
+    this.streamConnection = new RTCPeerConnection(this.rtcConfig)
+    console.log("StreamConnection::", this.streamConnection)
+    
+    this.streamConnection.onconnectionstatechange = (event) => {
+      console.log("STREAM inc. connectionstatechange", event,  this.streamConnection.connectionState)
+    }
+
+    this.streamConnection.onnegotiationneeded = async (event) => {
+      console.log('STREAM inc. onnegotiationneeded', event, this.streamConnection.connectionState)
+
+      const offer = await this.streamConnection.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true
+      })
   
-  onMessage(event: MessageEvent, channel?: number){
+      await this.streamConnection.setLocalDescription(offer)
+      
+      await this.sendJson({ 
+        ac: 3, // Offer para video stream
+        offer: this.streamConnection.localDescription,
+      })
+    }  
+
+    mediaStream.getTracks().forEach(track => {
+      this.streamConnection.addTrack(track, mediaStream)
+    })
+  }
+  
+  async onMessage(event: MessageEvent, channel?: number){
     if(!channel){ throw new Error("Channel not defined") }
     let msg = event.data
-    console.log("Mensaje Recibido::", channel, msg)
+    // Revisa si es un mensaje comprimido
+    if(msg instanceof ArrayBuffer){
+      const [header, binaryMessage] = extractHeaderFromUint8Array(new Uint8Array(msg))
+      // console.log("header + binaryMessage::", header, binaryMessage)
+      if(header === 1){ // Mensaje de Texto comprimido con Gzip
+        console.log("binary size::", binaryMessage.length,"|",msg.byteLength)
+        msg = await decompressWithGzip(binaryMessage)
+        console.log("Mensaje descomprimido::", msg)
+      } else if(header === 2){ // Chucnk de video
+        if(this.onVideoChunk){ 
+          this.onVideoChunk(binaryMessage, header)
+        }
+        return
+      }
+    }
+
+    console.log("Mensaje Recibido::", channel, msg, " | Client:", this.clientID)
     try {
       msg = JSON.parse(msg) 
     } catch (error) {
@@ -239,7 +325,66 @@ export class RTCManager {
           setChatMessages([...client.messages])
         }
         if(client._updater){ client._updater() }
+        // Guarda el mensaje en la base de datos
+        getDexieInstance().then(db => {
+          db.table('messages').put({ cid: this.clientID, id: msg.id, ...msg })
+        })
+        // Envia confirmación del mensaje recibido
+        const msgConfirm = JSON.stringify({ ac: 2, id: msg.id, ss: 2 })
+        this.channel.send(msgConfirm)
       }
+    } else if(accion === 2){ // Confirmación de recepción de mensaje
+      console.log("confirmación recibida::!")
+    // Solicitud de incoming video stream
+    } else if(accion === 3){
+      if(!msg.offer){
+        console.warn("No offer in message::", msg)
+        return
+      }
+      this.streamIncommingConn = new RTCPeerConnection(this.rtcConfig)
+      console.log("StreamIncommingConn::", this.streamIncommingConn)
+
+      this.streamIncommingConn.onicecandidate = () => {
+        console.log("STREAM inc. onicecandidate", this.streamIncommingConn.iceConnectionState)
+        
+        if(this.streamIncommingConn.localDescription.type == 'answer'){
+          this.sendJson({ 
+            ac: 4, // Answer para video stream
+            answer: this.streamIncommingConn.localDescription,
+          })
+        }
+      }
+
+      this.streamIncommingConn.onconnectionstatechange = (event) => {
+        console.log("STREAM inc. connectionstatechange", event,  this.streamIncommingConn.connectionState)
+      }
+  
+      this.streamIncommingConn.onnegotiationneeded = async (event) => {
+        console.log('STREAM inc. onnegotiationneeded', event, this.streamIncommingConn.connectionState)
+      }  
+
+      this.streamIncommingConn.ontrack = event => {
+        console.log("Recibido media stream::", event.streams[0])
+        if(this.onIncommingMediaStream){ 
+          this.onIncommingMediaStream(event.streams[0]) 
+        } else {
+          this.streamIncomming = event.streams[0]
+        }
+      } 
+      
+      await this.streamIncommingConn.setRemoteDescription(msg.offer)
+      
+      const answer = await this.streamIncommingConn.createAnswer()
+      await this.streamIncommingConn.setLocalDescription(answer)
+    
+    // Maneja la respuesta a la solicitud de video stream
+    } else if(accion === 4){
+      if(!msg.answer){
+        console.warn("No offer in message::", msg)
+        return
+      }
+      const session = new RTCSessionDescription(msg.answer)
+      await this.streamConnection.setRemoteDescription(session)
     }
   }
 }
@@ -334,12 +479,35 @@ export class ConnectionManager {
     this.worker.port.postMessage(['sendMessage', message])
   }
 
+  #videoChunkHandlers: Map<string, (c: Uint8Array, h: number) => void> = new Map()
+
+  onVideoChunk(ClientID: string, callback: (chunk: Uint8Array, h: number) => void){
+    this.#videoChunkHandlers.set(ClientID, callback)
+  }
+
+  #videoStreamHandlers: Map<string, (s: MediaStream) => void> = new Map()
+
+  onVideoStream(ClientID: string, callback: (mediaStream: MediaStream) => void){
+    this.#videoStreamHandlers.set(ClientID, callback)
+  }
+
   getRtcManager(ClientID: string, isOffer?: boolean, recreate?: boolean){
     if(!this.userRTCConnectionMap.has(ClientID) || recreate){
       console.log("Creando nuevo RTCManager para::", ClientID)
       this.userRTCConnectionMap.set(ClientID, new RTCManager(isOffer, ClientID))
     }
-    return this.userRTCConnectionMap.get(ClientID)
+    const rtcManager = this.userRTCConnectionMap.get(ClientID)
+    // on video chunk
+    rtcManager.onVideoChunk = (chunk, header) => {
+      const callback = this.#videoChunkHandlers.get(ClientID)
+      if(callback){ callback(chunk, header) }
+    }
+    // on incomming mediastream
+    rtcManager.onIncommingMediaStream = (mediaStream) => {
+      const callback = this.#videoStreamHandlers.get(ClientID)
+      if(callback){ callback(mediaStream) }
+    }
+    return rtcManager
   }
 
   async sendOffer(){
@@ -407,10 +575,29 @@ export class ConnectionManager {
     if(clientSelectedID() === clientID){
       setChatMessages([...client.messages])
     }
-    const messageString = JSON.stringify({...messageObject, ac: accion})
-    rtcManager.channel.send(messageString)
-    const compressed = await compressStringWithGzip(messageString)
-    rtcManager.channel.send(compressed)
+    rtcManager.sendJson({...messageObject, ac: accion})
+    // Guarda el mensaje en la base de datos
+    getDexieInstance().then(db => {
+      db.table('messages').put({ cid: clientID, ...messageObject })
+    })
+  }
+  
+  async sendMediaStream(clientID: string, stream: MediaStream){
+    const rtcManager = this.getRtcManager(clientID)
+    const mediaRecorder = new MediaRecorder(stream, { 
+      mimeType: mimeCodec, videoBitsPerSecond: 100000, audioBitsPerSecond: 10000 });
+
+    mediaRecorder.ondataavailable = event => {
+      event.data.arrayBuffer().then(buffer => {
+        rtcManager.sendBinary(2,new Uint8Array(buffer))
+      })
+    }
+    mediaRecorder.start(120)
+  }
+
+  async sendStreamRequest(clientID: string, mediaStream: MediaStream){
+    const rtcManager = this.getRtcManager(clientID)
+    rtcManager.sendStreamRequest(mediaStream)
   }
 }
 
@@ -443,4 +630,26 @@ export const compressStringWithGzip =  async (inputString: string): Promise<Uint
   const compressedData = new Blob(chunks, { type: 'application/gzip' })
   const compressedArray = await compressedData.arrayBuffer()
   return  new Uint8Array(compressedArray)
+}
+
+//create decompress with gzip function
+export const decompressWithGzip = async (compressedData: Uint8Array): Promise<string> => {
+  // Create a ReadableStream from the compressed Uint8Array
+  const compressedStream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(compressedData)
+      controller.close()
+    }
+  })
+
+  // Create a DecompressionStream for gzip
+  const decompressionStream = new DecompressionStream('gzip')
+  // Pipe the compressed stream through the decompression stream
+  const decompressedStream = compressedStream.pipeThrough(decompressionStream)
+
+  // Convert the decompressed stream to a Uint8Array
+  const decompressedArrayBuffer = await new Response(decompressedStream).arrayBuffer()
+  const decompressedUint8Array = new Uint8Array(decompressedArrayBuffer)
+
+  return (new TextDecoder('utf-8')).decode(decompressedUint8Array)
 }

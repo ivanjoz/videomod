@@ -59,7 +59,7 @@ func AskRTCConnection(args *core.HandlerArgs) core.HandlerResponse {
 	}
 
 	if request.ClientAskID == "" || request.Offer == "" {
-		core.Log("No se recibió el ClientID o Offer")
+		core.Log("Error: No se recibió el ClientID o Offer")
 		return core.HandlerResponse{}
 	}
 
