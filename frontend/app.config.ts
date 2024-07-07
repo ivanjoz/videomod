@@ -10,15 +10,14 @@ if (import.meta.hot){
 }
 
 export default defineConfig({
-  ssr: false, // IS_PRD,
-  server: {
+  ssr: false,
+  server: IS_PRD ? undefined : {
     renderer: "false",
     static: true,
     dev: false,
-    // noExternals: true,
   },  
   devOverlay: false,
-  solid: {
+  solid: IS_PRD ? undefined : {
     hot: false,
     ssr: false,
     dev: false,

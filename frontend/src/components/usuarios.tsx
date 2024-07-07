@@ -1,9 +1,8 @@
-"use client";
-import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import "video.js/dist/video-js.min.css";
 import { setChatMessages } from "~/components/chat";
 import { LoadingBar } from "~/components/layout";
-import { IClient, clientSelectedID, clientsMap, connectionManager, setClientSelectedID } from "~/services/connection";
+import { IClient, clientsMap, connectionManager, setClientSelectedID } from "~/services/connection";
 import s1 from '../styles/components.module.css';
 import { setButtonLayerShow } from "./menus";
 

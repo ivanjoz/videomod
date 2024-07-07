@@ -114,7 +114,7 @@ export const testBase94encode = () => {
 }
 
 export const GetWorker = () => {
-  return new SharedWorker(
+  return new Worker(
     new URL('~/worker/worker.ts?worker', import.meta.url), {
     type: 'module',
   })

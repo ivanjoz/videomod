@@ -1,5 +1,4 @@
-"use client";
-import { Show, createEffect, createMemo, createSignal, on } from "solid-js";
+import { Show, createEffect, createMemo, on } from "solid-js";
 import "video.js/dist/video-js.min.css";
 import { deviceType } from "~/app";
 import { ChatContainer } from "~/components/chat";

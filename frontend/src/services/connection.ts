@@ -1,4 +1,3 @@
-"use client";
 import Dexie from 'dexie'
 import { createSignal } from 'solid-js'
 import { IChatMessage, setChatMessages } from '~/components/chat';
@@ -156,11 +155,15 @@ export class RTCManager {
     console.log("instanciando RTC Manager::",isOffer, clientID)
     
     this.connection.onicecandidate = () => {
+      console.log("RTC: onicecandidate", this.connection.localDescription.type)
       if(this.connection.localDescription.type == 'offer'){
         const offer =  JSON.stringify(this.connection.localDescription)
         const IP = getIpFromCandidate(offer).split(".").filter(x => x)
         if(IP[0] === 'localhost' || IP[0] === '0' || IP[0] === '127'){ 
-          return
+          console.log("offer con IP privada (esperando)::",IP.join("."))
+          // return
+        } else {
+          console.log("IP offer (ok)::",IP.join("."))
         }
         // The offer with the correct public IP is ready here (previuos offers are generated with private IP)
         this.offerString = JSON.stringify(this.connection.localDescription)
@@ -401,7 +404,7 @@ export class ConnectionManager {
 
   clientID: string
   onOpenPromise: Promise<any>
-  worker: SharedWorker
+  worker: Worker
   ws: WebSocket
   wsConnectionStatus: number = 0
   suscriptions: Map<string, (response: any) => void> = new Map()
@@ -421,9 +424,10 @@ export class ConnectionManager {
 
     // Shared Wss Worker
     this.worker = GetWorker()
-    this.worker.port.start()
+    // this.worker.port.start()
 
-    this.worker.port.onmessage = (e) => {
+    // this.worker.port.onmessage = (e) => {
+    this.worker.onmessage = (e) => {
       const [workerAccion,content] = e.data
       console.log("Worker Message Recived::", workerAccion, content) 
       if(workerAccion === 'connectionStatus'){
@@ -454,7 +458,7 @@ export class ConnectionManager {
     this.onOpenPromise = Promise.all([
       new Promise<void>((p) => {
         this.workerPromiseResolver = p
-        this.worker.port.postMessage(['getConnectionStatus'])
+        this.worker/*.port*/.postMessage(['getConnectionStatus'])
       }),
       new Promise<void>((resolve) => {
         getClientID().then(id => {
@@ -473,10 +477,11 @@ export class ConnectionManager {
   }
 
   async sendWorkerMessage(accion: string, messageBody: string){
+    console.log("Enviando worker message...")
     if(this.onOpenPromise){ await this.onOpenPromise }
     console.log('Client-ID a enviar::', this.clientID)
     const message = { a: accion, b: messageBody, c: this.clientID }
-    this.worker.port.postMessage(['sendMessage', message])
+    this.worker/*.port*/.postMessage(['sendMessage', message])
   }
 
   #videoChunkHandlers: Map<string, (c: Uint8Array, h: number) => void> = new Map()

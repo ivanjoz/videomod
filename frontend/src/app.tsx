@@ -1,11 +1,9 @@
-"use client";
 import { MetaProvider } from "@solidjs/meta";
 import { Router } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
 import "@styles/global.css";
 import "@styles/layout.css";
 import { Suspense, createSignal } from "solid-js";
-import { Base64, TimeMToB64Decode, TimeMToB64Encode } from "./core/halpers";
 
 export const GetWssAPI = () => {
   if(typeof window === 'undefined'){

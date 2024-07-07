@@ -61,21 +61,40 @@ wss.onmessage = (event) => {
       console.warn("La respuesta no es un JSON válido: ",response)
       return
     }
-    console.log("respuesta websocket::", response)
+    console.log("respuesta websocket::", response);
+    (self as any).postMessage(["wssMessage",response]) 
+    /*
     console.log("connected ports::", connectedPorts.size)
     for(let [_, port] of connectedPorts){
       port.postMessage(["wssMessage",response]) 
-    }
-    /*
-    if(response.accion && typeof response.body !== 'undefined'){
-
-    } else {
-      
     }
     */
   })
 }
 
+(self as any).onmessage = (e: MessageEvent) => {
+  const [accion,content] = e.data
+  console.log("worker message recived::", accion, content)
+
+  if(accion === 'getConnectionStatus'){ 
+    if(connectionStatusPromise){
+      connectionStatusPromise.then(() => {
+        (self as any).postMessage(["connectionStatus",connectionStatus])
+      })
+    } else {
+      (self as any).postMessage(["connectionStatus",connectionStatus])
+    }
+  } else if(accion === 'sendMessage'){
+    const messageToSend = typeof content === 'string' ? content : JSON.stringify(content)
+    compressStringWithGzip(messageToSend).then((compressed) => {
+      console.log("bytes a enviar::", compressed.length)
+      const base94string = base94Encode(compressed)
+      wss.send(base94string)
+    })
+  }
+}
+
+/*
 const onmessage = (e: MessageEvent, port: MessagePort) => {
   const [accion,content] = e.data
   console.log("worker message recived::", accion, content)
@@ -104,3 +123,4 @@ self.addEventListener('connect', (ev) => {
   port.addEventListener("message", (e) => onmessage(e, port))
   port.start()
 })
+*/
