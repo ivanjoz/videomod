@@ -1,5 +1,5 @@
 import { For, createEffect, createSignal, on } from "solid-js"
-import { IClient, connectionManager, mimeCodec } from "~/services/connection"
+import { IClient, connectionManager, getDexieInstance, mimeCodec } from "~/services/connection"
 // import s1 from '../styles/components.module.css';
 
 export interface IChatContainer {
@@ -20,12 +20,12 @@ export const ChatContainer = (props: IChatContainer) => {
   let videoLocal: HTMLVideoElement
   let videoInput: HTMLVideoElement
   let localStream: MediaStream
-  let sourceBuffer: SourceBuffer
-  let queue: Uint8Array[] = []
+  // let sourceBuffer: SourceBuffer
+  // let queue: Uint8Array[] = []
 
   createEffect(() => {
-    console.log("obteniendo mensajes::",props.client)
-    /*
+    console.log("Obteniendo mensajes::",props.client)   
+
     getDexieInstance().then(db => {
       db.table('messages').where({ cid: props.client.id }).toArray().then(messages => {
         messages.sort((a,b) => a.id < b.id ? 1 : -1)
@@ -33,7 +33,6 @@ export const ChatContainer = (props: IChatContainer) => {
         setChatMessages(messages)
       })
     })
-    */
   })
 
   createEffect(on(() => props.client,() => {
@@ -119,21 +118,21 @@ export const ChatContainer = (props: IChatContainer) => {
     connectionManager.sendStreamRequest(props.client.id, localStream)
   }
 
-  return <div class="h100 p-rel flex-column">
+  return <div class="p-rel flex-column" style={{ height: 'calc(100% - 1.2rem)' }}>
     { 
     props.client && <>
-      <div class="flex w100">
-        <div class="video-v1 mr-08" onClick={ev => {
-          ev.stopPropagation()
-          onvideoInit()
-        }}>
-          <video class="w100 h100" ref={videoLocal} autoplay playsinline></video>
-        </div>
-        <div class="video-v1" onClick={ev => {
+      <div class="flex w100 mb-06">
+        <div class="video-v1 mr-auto" onClick={ev => {
           ev.stopPropagation()
           onvideoInit()
         }}>
           <video class="w100 h100" ref={videoInput} autoplay playsinline></video>
+        </div>
+        <div class="video-v2 p-abs s1 mr-08" onClick={ev => {
+          ev.stopPropagation()
+          onvideoInit()
+        }}>
+          <video class="w100 h100" ref={videoLocal} autoplay playsinline></video>
         </div>
       </div>
       <div class="flex w100 mt-06 mb-06">
@@ -143,7 +142,7 @@ export const ChatContainer = (props: IChatContainer) => {
           sendMessage()
         }}>Enviar</button>
       </div>
-      <div class="flex-column w100 grow-1">
+      <div class="flex-column w100 grow-1" style={{ overflow: 'auto' }}>
         <For each={chatMessages()}>
           {message => {
             let contanerCss = message.ss === 5 ? "flex jc-start" : "flex jc-end"

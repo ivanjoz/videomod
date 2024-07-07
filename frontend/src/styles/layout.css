@@ -27,7 +27,30 @@
 }
 
 .video-v1 {
-  width: 20rem;
-  height: 14rem;
-  background-color: #768d82;
+  width: 22rem;
+  height: 17rem;
+  background-color: #8fb169;
+}
+
+.video-v2 {
+  width: 13.5rem;
+  height: 10rem;
+  background-color: #b19869;
+  right: 0;
+  top: 0;
+}
+
+.layout-1 {
+  padding-top: calc(2.6rem + 10px);
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.layout-1 > .bar-1 {
+  position: fixed;
+  top: 0;
+  left: 0;
+  background-color: #3f3fbc;
+  height: 2.6rem;
+  color: white;
+  padding: 0 16px;
 }

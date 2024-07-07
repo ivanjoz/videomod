@@ -4,7 +4,7 @@ import { Router } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
 import "@styles/global.css";
 import "@styles/layout.css";
-import { Suspense } from "solid-js";
+import { Suspense, createSignal } from "solid-js";
 import { Base64, TimeMToB64Decode, TimeMToB64Encode } from "./core/halpers";
 
 export const GetWssAPI = () => {
@@ -18,7 +18,28 @@ export const GetWssAPI = () => {
   }
 }
 
+const isClient = typeof window !== 'undefined'
+
+export const checkDevice = () => {
+  if(!isClient) return 1
+  if(window.innerWidth <= 640) return 3
+  else if(window.innerWidth <= 980) return 2
+  else { 
+    return 1 
+  }
+}
+
+export const [deviceType, setDeviceType] = createSignal(checkDevice())
+
 export default function App() {
+
+  if(isClient){
+    window.addEventListener('resize', ()=> {
+      const newDeviceType = checkDevice()
+      console.log('device type::', newDeviceType)
+      if(newDeviceType !== deviceType()){ setDeviceType(newDeviceType) }
+    })
+  }
 
   return (
     <Router

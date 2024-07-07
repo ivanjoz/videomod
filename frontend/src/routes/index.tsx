@@ -5,49 +5,10 @@ import { IClient, IConnStatus, clientSelectedID, clientSelectedStatus, clientsMa
 import s1 from '../styles/components.module.css';
 import { LoadingBar } from "~/components/layout";
 import { ChatContainer, setChatMessages } from "~/components/chat";
+import { deviceType } from "~/app";
+import { Layout1 } from "~/components/menus";
 
 export default function Home() {
-
-          // List of common video and audio codecs to check
-          const videoCodecs = [
-            'video/webm; codecs="vp8"',
-            'video/webm; codecs="vp9"',
-            'video/webm; codecs="av01"',
-            'video/mp4; codecs="avc1.42E01E"',
-            'video/mp4; codecs="avc1.4D401E"',
-            'video/mp4; codecs="avc1.64001E"',
-            'video/mp4; codecs="hev1.1.6.L93.B0"',
-            'video/mp4; codecs="hvc1.1.6.L93.B0"'
-        ];
-
-        const audioCodecs = [
-            'audio/webm; codecs="opus"',
-            'audio/webm; codecs="vorbis"',
-            'audio/mp4; codecs="mp4a.40.2"',
-            'audio/aac'
-        ];
-
-        console.log('Supported Video Codecs:');
-        videoCodecs.forEach(codec => {
-            if (MediaSource.isTypeSupported(codec)) {
-                console.log(codec, 'is supported');
-            } else {
-                console.log(codec, 'is NOT supported');
-            }
-        });
-
-        console.log('Supported Audio Codecs:');
-        audioCodecs.forEach(codec => {
-            if (MediaSource.isTypeSupported(codec)) {
-                console.log(codec, 'is supported');
-            } else {
-                console.log(codec, 'is NOT supported');
-            }
-        });
-        
-
-  const [loadingClients, setLoadingClients] = createSignal(true)
-
   const clientSelected = createMemo(() => {
     return clientsMap().get(clientSelectedID())
   })
@@ -59,13 +20,41 @@ export default function Home() {
     setClientSelectedStatus(client.connStatus)
   }))
 
+  if(typeof window === 'undefined'){ return <div>!</div> }
+
+
+  connectionManager.sendOffer()
+
+  return <Layout1>
+    <div class="w100 flex jc-between">
+      { [1].includes(deviceType()) &&
+        <div class="py-12 mr-16" style={{ width: '28%' }}>
+          <UsuariosConectados />
+        </div>
+      }
+      <div class={"py-12 px-08 p-rel flex-column grow-1 " + (s1.card_chat_c)}>
+        <div class="h3">Chat</div>
+        <ChatContainer client={clientSelected()}/>
+        <Show when={clientSelectedStatus()?.isLoading}>
+          <LoadingBar msg={clientSelectedStatus()?.msg} />
+        </Show>
+      </div>
+    </div>
+  </Layout1>
+}
+
+interface IClientCard {
+  client: IClient
+}
+
+const [loadingClients, setLoadingClients] = createSignal(true)
+
+const UsuariosConectados = () => {
   const clientsList = createMemo(() => {
     let clientsAll = Array.from(clientsMap().values())
     clientsAll = clientsAll.sort((a,b) => b._updated - a._updated)
     return clientsAll
   })
-
-  if(typeof window === 'undefined'){ return <div>!</div> }
 
   connectionManager.on('PostRtcOffer', users => {
     const clientsMap = new Map()
@@ -79,44 +68,21 @@ export default function Home() {
     setLoadingClients(false)
   })
 
-  connectionManager.sendOffer()
-
-  createEffect(() => {
-    connectionManager.onMessage = e => {
-      console.log("respuesta recibida::", e)
-    }
-  },[])
-
-  return <div>
-    <h3>WebRTC Open Chat Room 5</h3>
-    <div class="w100 flex jc-between">
-      <div class="px-12 py-12" style={{ width: '28%' }}>
-        <div class="h3">Usuarios Conectados 1</div>
-        <Show when={loadingClients()}>
-          <LoadingBar msg="Cargando Usuarios..." />
-        </Show>
-        <Show when={!loadingClients()}>
-          <For each={clientsList()}>
-            {client => {
-              return <ClientCard client={client} />
-            }}
-          </For>
-        </Show>
-      </div>
-      <div class={"px-12 py-12 p-rel h100 flex-column grow-1 " + (s1.card_chat_c)}>
-        <div class="h3">Chat</div>
-        <ChatContainer client={clientSelected()}/>
-        <Show when={clientSelectedStatus()?.isLoading}>
-          <LoadingBar msg={clientSelectedStatus()?.msg} />
-        </Show>
-      </div>
-    </div>
-  </div>
+  return <>
+    <div class="h3">Usuarios Conectados 1</div>
+    <Show when={loadingClients()}>
+      <LoadingBar msg="Cargando Usuarios..." />
+    </Show>
+    <Show when={!loadingClients()}>
+      <For each={clientsList()}>
+        {client => {
+          return <ClientCard client={client} />
+        }}
+      </For>
+    </Show>
+  </>
 }
 
-interface IClientCard {
-  client: IClient
-}
 
 const ClientCard = (props: IClientCard) => {
 
@@ -169,5 +135,4 @@ const ClientCard = (props: IClientCard) => {
       </div>
     </div>
   </div>
-
 }
