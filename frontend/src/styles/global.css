@@ -25,6 +25,7 @@ body {
   height: 100%;
   color: white;
   background-color: #232325;
+  --header-height: 2.7rem;
 }
 
 *, :after, :before { box-sizing: border-box; }

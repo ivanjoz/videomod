@@ -24,6 +24,7 @@ export const ChatContainer = (props: IChatContainer) => {
   // let queue: Uint8Array[] = []
 
   createEffect(() => {
+    if(!props.client){ return }
     console.log("Obteniendo mensajes::",props.client)   
 
     getDexieInstance().then(db => {

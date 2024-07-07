@@ -41,7 +41,7 @@
 }
 
 .layout-1 {
-  padding-top: calc(2.6rem + 10px);
+  padding-top: calc(var(--header-height) + 10px);
   padding-left: 12px;
   padding-right: 12px;
 }
@@ -50,7 +50,23 @@
   top: 0;
   left: 0;
   background-color: #3f3fbc;
-  height: 2.6rem;
+  height: var(--header-height);
   color: white;
   padding: 0 16px;
+  z-index: 200;
+}
+.bn2 {
+  height: 2.4rem;
+  background-color: black;
+  color: white;
+}
+.layer-c1 {
+  position: absolute;
+  width: 70vw;
+  top: var(--header-height);
+  height: calc(100vh - var(--header-height));
+  backdrop-filter: blur(8px);
+  z-index: 201;
+  left: 0;
+  background-color: #4a3e56b5;
 }
